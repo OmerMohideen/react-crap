@@ -1,6 +1,6 @@
 {
 	"name": "@omermohideen/react-crap",
-	"version": "1.0.1",
+	"version": "1.1.0",
 	"description": "Change Risk Anti-Patterns (CRAP) metric for React TypeScript projects",
 	"bin": {
 		"react-crap": "dist/bin/react-crap.js"
