@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/OmerMohideen/react-crap/master/schemas/delta-v2.json",
+  "type": "object",
+  "required": ["version", "entries", "removed"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "type": "string" },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file", "function", "line", "cyclomatic", "coverage", "crap", "baseline_crap", "delta", "status"],
+        "properties": {
+          "file": { "type": "string" },
+          "function": { "type": "string" },
+          "line": { "type": "integer" },
+          "cyclomatic": { "type": "number" },
+          "coverage": { "type": ["number", "null"] },
+          "crap": { "type": "number" },
+          "baseline_crap": { "type": "number" },
+          "delta": { "type": "number" },
+          "status": { "type": "string", "enum": ["New", "Increased", "Decreased", "Unchanged", "Moved"] },
+          "previous_file": { "type": "string" }
+        }
+      }
+    },
+    "removed": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file", "function", "baseline_crap"],
+        "properties": {
+          "file": { "type": "string" },
+          "function": { "type": "string" },
+          "baseline_crap": { "type": "number" }
+        }
+      }
+    }
+  }
+}

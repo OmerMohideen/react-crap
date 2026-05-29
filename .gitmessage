@@ -1,0 +1,23 @@
+# <type>(<scope>): <short summary>
+#
+# Type must be one of:
+#   feat     - A new feature
+#   fix      - A bug fix
+#   docs     - Documentation only changes
+#   style    - Code style changes (formatting, semicolons, etc.)
+#   refactor - Code refactoring
+#   perf     - Performance improvements
+#   test     - Adding or correcting tests
+#   chore    - Build process or auxiliary tool changes
+#   ci       - CI configuration changes
+#
+# Scope is optional but recommended. Examples:
+#   cli, config, coverage, complexity, merge, score, delta, report, cache, deps
+#
+# The summary should be in imperative mood and not end with a period.
+#
+# Example:
+#   feat(report): add HTML output formatter
+#
+# BREAKING CHANGE: (if applicable)
+#   Describe what breaks and how users should migrate.

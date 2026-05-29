@@ -1,0 +1,72 @@
+{
+	"name": "react-crap",
+	"version": "1.0.0",
+	"description": "Change Risk Anti-Patterns (CRAP) metric for React TypeScript projects",
+	"bin": {
+		"react-crap": "dist/bin/react-crap.js"
+	},
+	"files": [
+		"dist",
+		"schemas",
+		".react-crap.json.example",
+		"README.md",
+		"LICENSE"
+	],
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsx bin/react-crap.ts",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"lint": "tsc --noEmit && biome check src bin test",
+		"format": "biome format --write src bin test",
+		"clean": "rm -rf dist",
+		"prepare": "husky",
+		"commitlint": "commitlint --edit"
+	},
+	"engines": {
+		"node": ">=18"
+	},
+	"keywords": [
+		"crap",
+		"code-quality",
+		"complexity",
+		"coverage",
+		"typescript",
+		"react",
+		"cli"
+	],
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/OmerMohideen/react-crap.git"
+	},
+	"license": "MIT",
+	"devDependencies": {
+		"@biomejs/biome": "^2.4.15",
+		"@commitlint/cli": "^19.0.0",
+		"@commitlint/config-conventional": "^19.0.0",
+		"@semantic-release/changelog": "^6.0.0",
+		"@semantic-release/commit-analyzer": "^13.0.0",
+		"@semantic-release/exec": "^7.1.0",
+		"@semantic-release/git": "^10.0.0",
+		"@semantic-release/github": "^10.0.0",
+		"@semantic-release/npm": "^12.0.0",
+		"@semantic-release/release-notes-generator": "^14.0.0",
+		"@types/node": "^22.0.0",
+		"husky": "^9.1.7",
+		"semantic-release": "^24.0.0",
+		"tsx": "^4.0.0",
+		"typescript": "^5.5.0",
+		"vitest": "^2.0.0"
+	},
+	"dependencies": {
+		"cli-table3": "^0.6.5",
+		"commander": "^12.0.0",
+		"ignore": "^7.0.5",
+		"picocolors": "^1.0.0",
+		"picomatch": "^4.0.0"
+	},
+	"publishConfig": {
+		"access": "public",
+		"provenance": true
+	}
+}

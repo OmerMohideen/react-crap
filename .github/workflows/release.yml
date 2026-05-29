@@ -1,0 +1,43 @@
+name: Release
+
+on:
+  push:
+    branches: [master]
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-and-build
+        with:
+          run-lint: "true"
+          run-test: "true"
+
+      - name: Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_CONFIG_PROVENANCE: true
+          HUSKY: 0
+        run: npx semantic-release
+
+      - name: Publish to npm with OIDC
+        run: |
+          if git describe --tags --exact-match HEAD >/dev/null 2>&1; then
+            npm publish --access public
+          else
+            echo "No new release, skipping publish"
+          fi

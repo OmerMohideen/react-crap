@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Compiled output
+dist/
+build/
+*.tsbuildinfo
+
+# Project cache
+.react-crap-cache.json
+
+# Test coverage
+coverage/
+*.lcov
+
+# Fixture coverage (needed for integration tests)
+!test/fixtures/sample/coverage/
+!test/fixtures/sample/coverage/lcov.info
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Misc
+*.log
+.cache/
+temp/
+tmp/
