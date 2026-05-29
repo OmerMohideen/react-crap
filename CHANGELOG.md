@@ -1,3 +1,10 @@
+# 1.0.0 (2026-05-29)
+
+
+### Features
+
+* initial commit ([4495b3e](https://github.com/OmerMohideen/react-crap/commit/4495b3ed5d9808e7389fbfd04cb5c664745cca42))
+
 ## [1.0.1](https://github.com/OmerMohideen/react-crap/compare/v1.0.0...v1.0.1) (2026-05-27)
 
 
