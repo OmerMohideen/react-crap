@@ -16,6 +16,7 @@ import { formatMarkdown } from "./report/markdown.js";
 import { formatPrComment } from "./report/pr-comment.js";
 import { formatSarif } from "./report/sarif.js";
 import { filter, score } from "./score.js";
+import { checkForUpdate, getLocalVersion } from "./version-check.js";
 import { walkFiles } from "./walker.js";
 
 export interface RunOptions {
@@ -44,17 +45,21 @@ export interface RunOptions {
 }
 
 export async function run(rawOptions: RunOptions): Promise<void> {
+	const updatePromise = checkForUpdate();
 	if (rawOptions.watch) {
-		await watchMode(rawOptions);
+		await watchMode(rawOptions, updatePromise);
 		return;
 	}
-	const { exitCode } = await runOnce(rawOptions);
+	const { exitCode } = await runOnce(rawOptions, updatePromise);
 	if (exitCode !== 0) {
 		process.exit(exitCode);
 	}
 }
 
-async function watchMode(rawOptions: RunOptions): Promise<void> {
+async function watchMode(
+	rawOptions: RunOptions,
+	updatePromise: Promise<string | undefined>,
+): Promise<void> {
 	const { statSync } = await import("node:fs");
 
 	const collectMtimes = (paths: Set<string>) => {
@@ -81,7 +86,7 @@ async function watchMode(rawOptions: RunOptions): Promise<void> {
 	};
 
 	// First run
-	let result = await runOnce(rawOptions);
+	let result = await runOnce(rawOptions, updatePromise);
 	let watchedPaths = result.watchedPaths;
 	let lastMtimes = collectMtimes(watchedPaths);
 
@@ -90,7 +95,7 @@ async function watchMode(rawOptions: RunOptions): Promise<void> {
 		const current = collectMtimes(watchedPaths);
 		if (hasChanges(current, lastMtimes)) {
 			console.error("\n[watch] Files changed, re-running...\n");
-			result = await runOnce(rawOptions);
+			result = await runOnce(rawOptions, Promise.resolve(undefined));
 			watchedPaths = result.watchedPaths;
 			lastMtimes = collectMtimes(watchedPaths);
 		}
@@ -104,6 +109,7 @@ async function watchMode(rawOptions: RunOptions): Promise<void> {
 
 async function runOnce(
 	rawOptions: RunOptions,
+	updatePromise: Promise<string | undefined>,
 ): Promise<{ watchedPaths: Set<string>; exitCode: number }> {
 	const watchedPaths = new Set<string>();
 	const config = loadConfig(rawOptions.path);
@@ -311,7 +317,8 @@ async function runOnce(
 	// Delta mode
 	let output = "";
 	let exitCode = 0;
-	const version = "0.1.0";
+	const version = getLocalVersion();
+	const updateMessage = await updatePromise;
 
 	if (options.baseline) {
 		const baseline = loadBaseline(resolve(options.baseline));
@@ -397,6 +404,10 @@ async function runOnce(
 		writeFileSync(resolve(options.output), `${output}\n`, "utf-8");
 	} else {
 		console.log(output);
+	}
+
+	if (updateMessage) {
+		console.error(`\n${updateMessage}\n`);
 	}
 
 	return { watchedPaths, exitCode };
