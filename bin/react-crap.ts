@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import { run } from "../src/index.js";
+import { getLocalVersion } from "../src/version-check.js";
 
 function collect(value: string, previous: string[]): string[] {
 	return previous.concat([value]);
@@ -13,7 +14,7 @@ program
 	.description(
 		"Change Risk Anti-Patterns (CRAP) metric for React TypeScript projects",
 	)
-	.version("0.1.0");
+	.version(getLocalVersion());
 
 program
 	.option("--lcov <file>", "LCOV coverage report file")
