@@ -195,7 +195,10 @@ async function runOnce(
 		const beforeCount = allFiles.length;
 		allFiles = allFiles.filter((f) => changedFiles.has(f.path));
 		if (allFiles.length === 0) {
-			throw new Error("No uncommitted .ts/.tsx changes found.");
+			throw new Error(
+				"No uncommitted .ts/.tsx changes found in the analyzed path. " +
+					"Changed files may be outside --path or excluded by --exclude.",
+			);
 		}
 		log(`Filtered to ${allFiles.length} changed file(s) (from ${beforeCount})`);
 	}

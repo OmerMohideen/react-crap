@@ -2,8 +2,36 @@ import { execSync } from "node:child_process";
 import { resolve } from "node:path";
 
 export function getChangedFiles(projectPath: string): string[] {
+	let gitRoot: string;
+	try {
+		gitRoot = execSync("git rev-parse --show-toplevel", {
+			encoding: "utf-8",
+			stdio: "pipe",
+			cwd: projectPath,
+		}).trim();
+	} catch (e) {
+		const err = e as {
+			code?: string;
+			status?: number;
+			stderr?: Buffer | string;
+		};
+		if (err.code === "ENOENT") {
+			throw new Error("Git is required for --changed.");
+		}
+		if (
+			err.status === 128 ||
+			err.stderr?.toString().includes("not a git repository")
+		) {
+			if (err.stderr?.toString().includes("unknown revision 'HEAD'")) {
+				throw new Error(`Git repository at ${projectPath} has no commits.`);
+			}
+			throw new Error(`No git repository found at ${projectPath}.`);
+		}
+		throw e;
+	}
+
 	const diffCmd = "git diff --name-only HEAD";
-	const untrackedCmd = "git ls-files --others --exclude-standard";
+	const untrackedCmd = "git ls-files --others --exclude-standard --full-name";
 
 	let diffOutput = "";
 	let untrackedOutput = "";
@@ -58,7 +86,7 @@ export function getChangedFiles(projectPath: string): string[] {
 	const result: string[] = [];
 	for (const name of allNames) {
 		if (name.endsWith(".ts") || name.endsWith(".tsx")) {
-			result.push(resolve(projectPath, name));
+			result.push(resolve(gitRoot, name));
 		}
 	}
 
