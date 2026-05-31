@@ -1,6 +1,14 @@
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { execSync } from "node:child_process";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { run } from "../src/index";
 
 describe("integration", () => {
@@ -27,8 +35,7 @@ describe("integration", () => {
 	});
 
 	it("limits to changed files with --changed", async () => {
-		const tmpDir = resolve("test/fixtures/tmp-changed");
-		if (existsSync(tmpDir)) rmSync(tmpDir, { recursive: true });
+		const tmpDir = mkdtempSync(resolve(tmpdir(), "react-crap-changed-"));
 		mkdirSync(tmpDir, { recursive: true });
 
 		const srcDir = resolve(tmpDir, "src");
@@ -46,7 +53,6 @@ describe("integration", () => {
 		writeFileSync(resolve(tmpDir, "lcov.info"), lcovContent, "utf-8");
 
 		// Initialize git repo and stage the file so it counts as changed
-		const { execSync } = await import("node:child_process");
 		execSync("git init", { cwd: tmpDir });
 		execSync('git config user.email "test@test.com"', { cwd: tmpDir });
 		execSync('git config user.name "Test"', { cwd: tmpDir });
@@ -61,33 +67,37 @@ describe("integration", () => {
 		);
 
 		let output = "";
-		const originalLog = console.log;
-		console.log = (msg: string) => {
-			output += msg;
-		};
+		const logSpy = vi
+			.spyOn(console, "log")
+			.mockImplementation((...args: any[]) => {
+				output += args.join(" ");
+			});
 
-		await run({
-			lcov: resolve(tmpDir, "lcov.info"),
-			path: tmpDir,
-			threshold: 30,
-			missing: "pessimistic",
-			exclude: [],
-			allow: [],
-			format: "json",
-			summary: false,
-			failAbove: false,
-			failRegression: false,
-			epsilon: 0.01,
-			changed: true,
-		});
+		try {
+			await run({
+				lcov: resolve(tmpDir, "lcov.info"),
+				path: tmpDir,
+				threshold: 30,
+				missing: "pessimistic",
+				exclude: [],
+				allow: [],
+				format: "json",
+				summary: false,
+				failAbove: false,
+				failRegression: false,
+				epsilon: 0.01,
+				changed: true,
+			});
 
-		console.log = originalLog;
-
-		const parsed = JSON.parse(output);
-		expect(parsed.entries.length).toBe(1);
-		expect(parsed.entries[0].function).toBe("add");
-		expect(parsed.entries[0].file).toContain("changed.ts");
-
-		rmSync(tmpDir, { recursive: true });
+			const parsed = JSON.parse(output);
+			expect(parsed.entries.length).toBe(1);
+			expect(parsed.entries[0].function).toBe("add");
+			expect(parsed.entries[0].file).toContain("changed.ts");
+		} finally {
+			logSpy.mockRestore();
+			if (existsSync(tmpDir)) {
+				rmSync(tmpDir, { recursive: true });
+			}
+		}
 	});
 });
