@@ -8,6 +8,7 @@ import { loadConfig } from "./config.js";
 import { parseLcov } from "./coverage.js";
 import { computeDelta, loadBaseline } from "./delta.js";
 import { getChangedFiles } from "./git.js";
+import { getChangedLineRanges } from "./git-diff.js";
 import { merge } from "./merge.js";
 import { formatGithub } from "./report/github.js";
 import { formatHtml } from "./report/html.js";
@@ -273,13 +274,42 @@ async function runOnce(
 	}
 	saveCache(resolve(options.path), cache);
 
-	const complexity = [...cachedEntries, ...freshEntries];
+	let complexity = [...cachedEntries, ...freshEntries];
 	log(`Found ${complexity.length} function(s)`);
 
 	// Attach package info to complexity entries
 	const fileToPackage = new Map(allFiles.map((f) => [f.path, f.package]));
 	for (const c of complexity) {
 		(c as any).package = fileToPackage.get(c.file) ?? "default";
+	}
+
+	// Function-level filter: only include functions whose line range overlaps changed lines
+	if (options.changed) {
+		const changedRanges = getChangedLineRanges(resolve(options.path));
+		// Normalize map keys to forward slashes for consistent lookup
+		// TypeScript sourceFile.fileName uses forward slashes on all platforms
+		const normalizedRanges = new Map<string, Set<number>>();
+		for (const [file, lines] of changedRanges) {
+			normalizedRanges.set(file.replace(/\\/g, "/"), lines);
+		}
+		const beforeCount = complexity.length;
+		complexity = complexity.filter((entry) => {
+			const fileLines = normalizedRanges.get(entry.file);
+			if (!fileLines) return false;
+			for (let l = entry.line; l <= entry.endLine; l++) {
+				if (fileLines.has(l)) return true;
+			}
+			return false;
+		});
+		log(
+			`Filtered to ${complexity.length} changed function(s) (from ${beforeCount})`,
+		);
+		if (complexity.length === 0) {
+			throw new Error(
+				"No changed functions found in the analyzed path. " +
+					"Changed lines may be outside any function body.",
+			);
+		}
 	}
 
 	// Merge

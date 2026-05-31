@@ -1,7 +1,7 @@
 import { execSync } from "node:child_process";
 import { resolve } from "node:path";
 
-function classifyGitError(e: unknown, projectPath: string): Error {
+export function classifyGitError(e: unknown, projectPath: string): Error {
 	const err = e as { code?: string; status?: number; stderr?: Buffer };
 	if (err.code === "ENOENT") {
 		return new Error("Git is required for --changed.");

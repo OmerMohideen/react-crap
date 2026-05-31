@@ -67,6 +67,8 @@ npm run format     # biome format --write src bin test
   - `pr-comment.ts`: Collapsible PR comment with regressions table and `<details>` blocks.
   - `sarif.ts`: SARIF 2.1.0 for GitHub Code Scanning / VS Code.
 - **src/walker.ts**: File system traversal. Respects `.gitignore`. Finds `.ts` / `.tsx` files.
+- **src/git.ts**: Detects git repository and returns the list of uncommitted `.ts`/`.tsx` files (used by `--changed`).
+- **src/git-diff.ts**: Parses `git diff --unified=0` to extract changed line numbers per file. Enables function-level filtering when `--changed` is active.
 
 ## Key Decisions
 
@@ -198,6 +200,7 @@ npx react-crap --lcov coverage/lcov.info --changed
 
 - Includes modified, staged, and untracked `.ts`/`.tsx` files.
 - Resolves paths against the git repository root, so `--path` may point to a subdirectory.
+- **Filters at the function level** — only functions whose line range overlaps with changed lines are reported. Unchanged functions inside a changed file are excluded.
 - Not supported in `.react-crap.json` (transient, per-run filter).
 
 ## Workspace / Monorepo Support
