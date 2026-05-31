@@ -198,6 +198,7 @@ npx react-crap --lcov coverage/lcov.info --changed
 
 - Includes modified, staged, and untracked `.ts`/`.tsx` files.
 - Resolves paths against the git repository root, so `--path` may point to a subdirectory.
+- **Filters at the function level** — only functions whose line range overlaps with changed lines are reported. Unchanged functions inside a changed file are excluded.
 - Not supported in `.react-crap.json` (transient, per-run filter).
 
 ## Workspace / Monorepo Support
