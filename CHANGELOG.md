@@ -1,3 +1,10 @@
+## [1.3.1](https://github.com/OmerMohideen/react-crap/compare/v1.3.0...v1.3.1) (2026-05-31)
+
+
+### Bug Fixes
+
+* function-level changed filtering and update documentation ([#3](https://github.com/OmerMohideen/react-crap/issues/3)) ([dd1df41](https://github.com/OmerMohideen/react-crap/commit/dd1df416f61d52442973f5fd657359226bcf8dfa))
+
 # [1.3.0](https://github.com/OmerMohideen/react-crap/compare/v1.2.0...v1.3.0) (2026-05-31)
 
 
