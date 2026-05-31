@@ -55,6 +55,7 @@ program
 	.option("--workspace", "Analyze all workspace packages")
 	.option("--verbose", "Print detailed progress information")
 	.option("--watch", "Re-run automatically when files change")
+	.option("--changed", "Only analyze uncommitted .ts/.tsx files")
 	.option("--no-color", "Disable colored output")
 	.option("--output <file>", "Write output to file instead of stdout");
 
@@ -85,6 +86,7 @@ run({
 	workspace: options.workspace ?? false,
 	verbose: options.verbose ?? false,
 	watch: options.watch ?? false,
+	changed: options.changed ?? false,
 	output: options.output,
 	noColor,
 }).catch((err) => {

@@ -32,7 +32,7 @@ export function loadCache(projectPath: string): Cache {
 
 export function saveCache(projectPath: string, cache: Cache): void {
 	const path = resolve(projectPath, CACHE_FILE);
-	writeFileSync(path, JSON.stringify(cache, null, 2), "utf-8");
+	writeFileSync(path, `${JSON.stringify(cache, null, "\t")}\n`, "utf-8");
 }
 
 export function hashFile(content: string): string {

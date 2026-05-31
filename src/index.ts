@@ -7,6 +7,7 @@ import { analyzeComplexity } from "./complexity.js";
 import { loadConfig } from "./config.js";
 import { parseLcov } from "./coverage.js";
 import { computeDelta, loadBaseline } from "./delta.js";
+import { getChangedFiles } from "./git.js";
 import { merge } from "./merge.js";
 import { formatGithub } from "./report/github.js";
 import { formatHtml } from "./report/html.js";
@@ -41,6 +42,7 @@ export interface RunOptions {
 	workspace?: boolean;
 	verbose?: boolean;
 	watch?: boolean;
+	changed?: boolean;
 	noColor?: boolean;
 }
 
@@ -141,6 +143,7 @@ async function runOnce(
 		workspace: rawOptions.workspace || config.workspace || false,
 		verbose: rawOptions.verbose || config.verbose || false,
 		watch: rawOptions.watch || config.watch || false,
+		changed: rawOptions.changed ?? false,
 		noColor: rawOptions.noColor || false,
 	};
 
@@ -173,7 +176,7 @@ async function runOnce(
 	}
 
 	// Collect all source files with their package attribution
-	const allFiles: { path: string; package: string }[] = [];
+	let allFiles: { path: string; package: string }[] = [];
 	for (const p of pathsToAnalyze) {
 		const sourcePath = resolve(p);
 		const files = walkFiles({
@@ -185,6 +188,19 @@ async function runOnce(
 			allFiles.push({ path: f, package: relativePackagePath(options.path, p) });
 			watchedPaths.add(f);
 		}
+	}
+
+	if (options.changed) {
+		const changedFiles = new Set(getChangedFiles(resolve(options.path)));
+		const beforeCount = allFiles.length;
+		allFiles = allFiles.filter((f) => changedFiles.has(f.path));
+		if (allFiles.length === 0) {
+			throw new Error(
+				"No uncommitted .ts/.tsx changes found in the analyzed path. " +
+					"Changed files may be outside --path or excluded by --exclude.",
+			);
+		}
+		log(`Filtered to ${allFiles.length} changed file(s) (from ${beforeCount})`);
 	}
 
 	if (allFiles.length === 0) {

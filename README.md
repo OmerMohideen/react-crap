@@ -58,7 +58,10 @@ npx react-crap --lcov coverage/lcov.info --summary
 # 6. Watch mode during local development.
 npx react-crap --lcov coverage/lcov.info --path src --watch --verbose
 
-# 7. Generate an HTML report.
+# 7. Analyze only uncommitted changed files.
+npx react-crap --lcov coverage/lcov.info --path src --changed
+
+# 8. Generate an HTML report.
 npx react-crap --lcov coverage/lcov.info --path src --format html --output crap-report.html
 ```
 
@@ -94,6 +97,7 @@ Example output:
 | `--workspace` | off | Analyze all workspace packages (discovered via `package.json` workspaces or `pnpm-workspace.yaml`). Ignores `--path`. Adds a *Per-package summary* table to human and markdown output, and a `package` field to JSON entries. |
 | `--verbose` | off | Print step-by-step progress to stderr (file discovery, analysis progress, merge/scoring steps). |
 | `--watch` | off | Re-run automatically when source files or LCOV change. Uses 1-second polling. Press Ctrl+C to stop. |
+| `--changed` | off | Only analyze uncommitted `.ts`/`.tsx` files (modified, staged, and untracked). Useful for pre-commit checks and local iteration. CLI-only; not supported in config. |
 | `--fail-above` | off | Exit 1 if any function exceeds `--threshold`. |
 | `--baseline <FILE>` | — | JSON from a previous `--format json` run. Enables delta mode (shows Δ column). Functions that moved between files (same name, body unchanged) are detected and reported as `Moved` rather than as separate New + Removed entries; renderers show `← <previous_file>` next to the new location. |
 | `--fail-regression` | off | Exit 1 if any function's score increased since `--baseline`. `Moved` (pure relocation, no score change) is not a regression. |

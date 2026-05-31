@@ -86,7 +86,7 @@ Uses the project's own `typescript` package (resolved from `node_modules` near `
 
 ### Config System
 
-Config file: `.react-crap.json`. Walks up directories from `--path` until found. Supports all flags except `--lcov`, `--baseline`, `--output`, `--jobs`, `--no-color`, `--help`.
+Config file: `.react-crap.json`. Walks up directories from `--path` until found. Supports all flags except `--lcov`, `--baseline`, `--output`, `--jobs`, `--no-color`, `--help`, `--changed`.
 
 Allowed keys: `threshold`, `failAbove`, `missing`, `exclude`, `allow`, `epsilon`, `min`, `max`, `top`, `onlyFailures`, `workspace`, `verbose`, `watch`.
 
@@ -187,6 +187,18 @@ steps:
       sarif_file: crap.sarif
       category: react-crap
 ```
+
+### Analyze Only Changed Files
+
+For local pre-commit checks or CI diff gates, limit analysis to uncommitted `.ts`/`.tsx` files:
+
+```bash
+npx react-crap --lcov coverage/lcov.info --changed
+```
+
+- Includes modified, staged, and untracked `.ts`/`.tsx` files.
+- Resolves paths against the git repository root, so `--path` may point to a subdirectory.
+- Not supported in `.react-crap.json` (transient, per-run filter).
 
 ## Workspace / Monorepo Support
 
