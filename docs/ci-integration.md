@@ -65,6 +65,19 @@ steps:
       category: react-crap
 ```
 
+### Analyze Only Changed Files
+
+Limit analysis to uncommitted `.ts`/`.tsx` files for faster local or CI feedback:
+
+```yaml
+- run: npx vitest run --coverage
+- run: npx react-crap --lcov coverage/lcov.info --changed
+```
+
+This is useful in:
+- **Local pre-commit hooks** — get instant feedback on what you are editing
+- **CI diff gates** — verify CRAP scores only for code introduced in a PR
+
 ### Sticky PR Comment Bot
 
 Post a collapsible comment that updates on every push:

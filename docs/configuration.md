@@ -38,6 +38,17 @@ You can configure `react-crap` via CLI flags, a `.react-crap.json` file, or inli
 | `verbose` | `boolean` | `false` | Print step-by-step progress |
 | `watch` | `boolean` | `false` | Re-run automatically on file changes |
 
+### Keys NOT Allowed in Config
+
+These are intentionally CLI-only because they are environment-specific or transient:
+
+- `--lcov` — LCOV file path
+- `--baseline` — Baseline JSON path
+- `--output` — Output file path
+- `--jobs` — Parallelism cap
+- `--no-color` — Disable colors
+- `--format` — Output format (use CLI for ad-hoc reports)
+
 ### Validation
 
 Unknown keys are rejected with a validation error that includes a typo suggestion:
@@ -50,7 +61,7 @@ This uses Levenshtein distance with a tolerance of ≤2 character differences.
 
 ### Keys NOT Allowed in Config
 
-These are intentionally CLI-only because they are environment-specific:
+These are intentionally CLI-only because they are environment-specific or transient:
 
 - `--lcov` — LCOV file path
 - `--baseline` — Baseline JSON path
@@ -58,6 +69,7 @@ These are intentionally CLI-only because they are environment-specific:
 - `--jobs` — Parallelism cap
 - `--no-color` — Disable colors
 - `--format` — Output format (use CLI for ad-hoc reports)
+- `--changed` — Transient per-run filter based on working tree state
 
 ## CLI Flags
 
@@ -87,6 +99,7 @@ npx react-crap \
   --workspace \
   --verbose \
   --watch \
+  --changed \
   --no-color \
   --output report.txt
 ```

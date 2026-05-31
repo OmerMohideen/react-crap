@@ -105,6 +105,16 @@ Add a CI step that fails if any function exceeds the threshold:
 
 See [CI Integration](./ci-integration.md) for full examples.
 
+## 6. Analyze Only Changed Files (Optional)
+
+For local pre-commit checks, limit analysis to uncommitted `.ts`/`.tsx` files:
+
+```bash
+npx react-crap --lcov coverage/lcov.info --path src --changed
+```
+
+This includes modified, staged, and untracked files. It is especially useful when you want quick feedback on the code you are currently working on without waiting for a full analysis.
+
 ## Next Steps
 
 - [Configuration Reference](./configuration.md) — all flags and options
