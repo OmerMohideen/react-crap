@@ -34,35 +34,47 @@ describe("integration", () => {
 		).resolves.toBeUndefined();
 	});
 
-	it("limits to changed files with --changed", async () => {
+	it("limits to changed functions with --changed", async () => {
 		const tmpDir = mkdtempSync(resolve(tmpdir(), "react-crap-changed-"));
 		mkdirSync(tmpDir, { recursive: true });
 
 		const srcDir = resolve(tmpDir, "src");
 		mkdirSync(srcDir, { recursive: true });
 
-		// Write a .ts file
+		// Write a file with TWO functions
 		writeFileSync(
 			resolve(srcDir, "changed.ts"),
-			"export function add(a: number, b: number) { return a + b; }\n",
+			"export function add(a: number, b: number) { return a + b; }\n" +
+				"export function subtract(a: number, b: number) { return a - b; }\n",
 			"utf-8",
 		);
 
-		// Write a minimal LCOV report covering changed.ts line 1
-		const lcovContent = `SF:src/changed.ts\nFN:1,add\nFNDA:1,add\nDA:1,1\nLF:1\nLH:1\nend_of_record\n`;
+		// Write a minimal LCOV report covering both functions
+		const lcovContent =
+			`SF:src/changed.ts\n` +
+			`FN:1,add\n` +
+			`FN:2,subtract\n` +
+			`FNDA:1,add\n` +
+			`FNDA:1,subtract\n` +
+			`DA:1,1\n` +
+			`DA:2,1\n` +
+			`LF:2\n` +
+			`LH:2\n` +
+			`end_of_record\n`;
 		writeFileSync(resolve(tmpDir, "lcov.info"), lcovContent, "utf-8");
 
-		// Initialize git repo and stage the file so it counts as changed
+		// Initialize git repo and commit
 		execSync("git init", { cwd: tmpDir });
 		execSync('git config user.email "test@test.com"', { cwd: tmpDir });
 		execSync('git config user.name "Test"', { cwd: tmpDir });
 		execSync("git add .", { cwd: tmpDir });
 		execSync('git commit -m "initial"', { cwd: tmpDir });
 
-		// Modify the file so it counts as changed
+		// Modify ONLY the `add` function (line 1)
 		writeFileSync(
 			resolve(srcDir, "changed.ts"),
-			"export function add(a: number, b: number) { return a + b; }\n// modified\n",
+			"export function add(a: number, b: number) { return a + b + 1; }\n" +
+				"export function subtract(a: number, b: number) { return a - b; }\n",
 			"utf-8",
 		);
 
@@ -93,6 +105,11 @@ describe("integration", () => {
 			expect(parsed.entries.length).toBe(1);
 			expect(parsed.entries[0].function).toBe("add");
 			expect(parsed.entries[0].file).toContain("changed.ts");
+			// subtract should NOT appear because it wasn't changed
+			const subtractEntry = parsed.entries.find(
+				(e: any) => e.function === "subtract",
+			);
+			expect(subtractEntry).toBeUndefined();
 		} finally {
 			logSpy.mockRestore();
 			if (existsSync(tmpDir)) {
