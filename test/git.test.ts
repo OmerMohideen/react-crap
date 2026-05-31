@@ -21,6 +21,9 @@ function mockExec(outputs: Record<string, string | Buffer>) {
 }
 
 describe("getChangedFiles", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
 	it("returns only .ts and .tsx files from diff and untracked", () => {
 		mockExec({
 			"git diff --name-only HEAD": "src/lib.ts\nREADME.md\nsrc/app.tsx\n",

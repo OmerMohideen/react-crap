@@ -14,15 +14,20 @@ export function getChangedFiles(projectPath: string): string[] {
 			stdio: "pipe",
 			cwd: projectPath,
 		});
-	} catch (e: any) {
-		if (e.code === "ENOENT") {
+	} catch (e) {
+		const err = e as {
+			code?: string;
+			status?: number;
+			stderr?: Buffer | string;
+		};
+		if (err.code === "ENOENT") {
 			throw new Error("Git is required for --changed.");
 		}
 		if (
-			e.status === 128 ||
-			e.stderr?.toString().includes("not a git repository")
+			err.status === 128 ||
+			err.stderr?.toString().includes("not a git repository")
 		) {
-			if (e.stderr?.toString().includes("unknown revision 'HEAD'")) {
+			if (err.stderr?.toString().includes("unknown revision 'HEAD'")) {
 				throw new Error(`Git repository at ${projectPath} has no commits.`);
 			}
 			throw new Error(`No git repository found at ${projectPath}.`);
