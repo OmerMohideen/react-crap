@@ -1,6 +1,23 @@
 import { execSync } from "node:child_process";
 import { resolve } from "node:path";
 
+function classifyGitError(e: unknown, projectPath: string): Error {
+	const err = e as { code?: string; status?: number; stderr?: Buffer };
+	if (err.code === "ENOENT") {
+		return new Error("Git is required for --changed.");
+	}
+	if (err.stderr?.toString().includes("unknown revision 'HEAD'")) {
+		return new Error(`Git repository at ${projectPath} has no commits.`);
+	}
+	if (
+		err.status === 128 ||
+		err.stderr?.toString().includes("not a git repository")
+	) {
+		return new Error(`No git repository found at ${projectPath}.`);
+	}
+	return e instanceof Error ? e : new Error(String(e));
+}
+
 export function getChangedFiles(projectPath: string): string[] {
 	let gitRoot: string;
 	try {
@@ -10,27 +27,10 @@ export function getChangedFiles(projectPath: string): string[] {
 			cwd: projectPath,
 		}).trim();
 	} catch (e) {
-		const err = e as {
-			code?: string;
-			status?: number;
-			stderr?: Buffer | string;
-		};
-		if (err.code === "ENOENT") {
-			throw new Error("Git is required for --changed.");
-		}
-		if (
-			err.status === 128 ||
-			err.stderr?.toString().includes("not a git repository")
-		) {
-			if (err.stderr?.toString().includes("unknown revision 'HEAD'")) {
-				throw new Error(`Git repository at ${projectPath} has no commits.`);
-			}
-			throw new Error(`No git repository found at ${projectPath}.`);
-		}
-		throw e;
+		throw classifyGitError(e, projectPath);
 	}
 
-	const diffCmd = "git diff --name-only HEAD";
+	const diffCmd = "git diff --no-relative --name-only HEAD";
 	const untrackedCmd = "git ls-files --others --exclude-standard --full-name";
 
 	let diffOutput = "";
@@ -43,24 +43,7 @@ export function getChangedFiles(projectPath: string): string[] {
 			cwd: projectPath,
 		});
 	} catch (e) {
-		const err = e as {
-			code?: string;
-			status?: number;
-			stderr?: Buffer | string;
-		};
-		if (err.code === "ENOENT") {
-			throw new Error("Git is required for --changed.");
-		}
-		if (
-			err.status === 128 ||
-			err.stderr?.toString().includes("not a git repository")
-		) {
-			if (err.stderr?.toString().includes("unknown revision 'HEAD'")) {
-				throw new Error(`Git repository at ${projectPath} has no commits.`);
-			}
-			throw new Error(`No git repository found at ${projectPath}.`);
-		}
-		throw e;
+		throw classifyGitError(e, projectPath);
 	}
 
 	try {

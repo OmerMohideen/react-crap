@@ -27,7 +27,8 @@ describe("getChangedFiles", () => {
 	it("returns only .ts and .tsx files from diff and untracked", () => {
 		mockExec({
 			"git rev-parse --show-toplevel": "/project\n",
-			"git diff --name-only HEAD": "src/lib.ts\nREADME.md\nsrc/app.tsx\n",
+			"git diff --no-relative --name-only HEAD":
+				"src/lib.ts\nREADME.md\nsrc/app.tsx\n",
 			"git ls-files --others --exclude-standard --full-name": "src/new.ts\n",
 		});
 
@@ -85,7 +86,7 @@ describe("getChangedFiles", () => {
 	it("throws when no .ts/.tsx files changed", () => {
 		mockExec({
 			"git rev-parse --show-toplevel": "/project\n",
-			"git diff --name-only HEAD": "README.md\n",
+			"git diff --no-relative --name-only HEAD": "README.md\n",
 			"git ls-files --others --exclude-standard --full-name": "",
 		});
 
@@ -97,11 +98,22 @@ describe("getChangedFiles", () => {
 	it("deduplicates files appearing in both diff and untracked", () => {
 		mockExec({
 			"git rev-parse --show-toplevel": "/project\n",
-			"git diff --name-only HEAD": "src/lib.ts\n",
+			"git diff --no-relative --name-only HEAD": "src/lib.ts\n",
 			"git ls-files --others --exclude-standard --full-name": "src/lib.ts\n",
 		});
 
 		const result = getChangedFiles("/project");
 		expect(result).toEqual([resolve("/project", "src/lib.ts")]);
+	});
+
+	it("resolves paths against git root when projectPath is a subdirectory", () => {
+		mockExec({
+			"git rev-parse --show-toplevel": "/repo\n",
+			"git diff --no-relative --name-only HEAD": "packages/foo/src/lib.ts\n",
+			"git ls-files --others --exclude-standard --full-name": "",
+		});
+
+		const result = getChangedFiles("/repo/packages/foo");
+		expect(result).toEqual([resolve("/repo", "packages/foo/src/lib.ts")]);
 	});
 });

@@ -188,6 +188,18 @@ steps:
       category: react-crap
 ```
 
+### Analyze Only Changed Files
+
+For local pre-commit checks or CI diff gates, limit analysis to uncommitted `.ts`/`.tsx` files:
+
+```bash
+npx react-crap --lcov coverage/lcov.info --changed
+```
+
+- Includes modified, staged, and untracked `.ts`/`.tsx` files.
+- Resolves paths against the git repository root, so `--path` may point to a subdirectory.
+- Not supported in `.react-crap.json` (transient, per-run filter).
+
 ## Workspace / Monorepo Support
 
 Set `--workspace` to analyze all packages. Discovers workspaces via:
