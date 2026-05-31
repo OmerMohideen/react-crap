@@ -67,6 +67,8 @@ npm run format     # biome format --write src bin test
   - `pr-comment.ts`: Collapsible PR comment with regressions table and `<details>` blocks.
   - `sarif.ts`: SARIF 2.1.0 for GitHub Code Scanning / VS Code.
 - **src/walker.ts**: File system traversal. Respects `.gitignore`. Finds `.ts` / `.tsx` files.
+- **src/git.ts**: Detects git repository and returns the list of uncommitted `.ts`/`.tsx` files (used by `--changed`).
+- **src/git-diff.ts**: Parses `git diff --unified=0` to extract changed line numbers per file. Enables function-level filtering when `--changed` is active.
 
 ## Key Decisions
 
