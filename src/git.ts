@@ -3,8 +3,7 @@ import { resolve } from "node:path";
 
 export function getChangedFiles(projectPath: string): string[] {
 	const diffCmd = "git diff --name-only HEAD";
-	const untrackedCmd =
-		"git ls-files --others --exclude-standard -- '*.ts' '*.tsx'";
+	const untrackedCmd = "git ls-files --others --exclude-standard";
 
 	let diffOutput = "";
 	let untrackedOutput = "";
@@ -21,8 +20,11 @@ export function getChangedFiles(projectPath: string): string[] {
 		}
 		if (
 			e.status === 128 ||
-			(e.stderr && e.stderr.toString().includes("not a git repository"))
+			e.stderr?.toString().includes("not a git repository")
 		) {
+			if (e.stderr?.toString().includes("unknown revision 'HEAD'")) {
+				throw new Error(`Git repository at ${projectPath} has no commits.`);
+			}
 			throw new Error(`No git repository found at ${projectPath}.`);
 		}
 		throw e;
@@ -51,7 +53,7 @@ export function getChangedFiles(projectPath: string): string[] {
 	const result: string[] = [];
 	for (const name of allNames) {
 		if (name.endsWith(".ts") || name.endsWith(".tsx")) {
-			result.push(resolve(projectPath, name).replace(/\\/g, "/"));
+			result.push(resolve(projectPath, name));
 		}
 	}
 

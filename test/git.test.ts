@@ -24,16 +24,19 @@ describe("getChangedFiles", () => {
 	it("returns only .ts and .tsx files from diff and untracked", () => {
 		mockExec({
 			"git diff --name-only HEAD": "src/lib.ts\nREADME.md\nsrc/app.tsx\n",
-			"git ls-files --others --exclude-standard -- '*.ts' '*.tsx'":
-				"src/new.ts\n",
+			"git ls-files --others --exclude-standard": "src/new.ts\n",
 		});
 
 		const result = getChangedFiles("/project");
 		expect(result).toEqual([
-			resolve("/project", "src/lib.ts").replace(/\\/g, "/"),
-			resolve("/project", "src/app.tsx").replace(/\\/g, "/"),
-			resolve("/project", "src/new.ts").replace(/\\/g, "/"),
+			resolve("/project", "src/lib.ts"),
+			resolve("/project", "src/app.tsx"),
+			resolve("/project", "src/new.ts"),
 		]);
+		expect(execSync).toHaveBeenCalledWith(
+			expect.any(String),
+			expect.objectContaining({ cwd: "/project" }),
+		);
 	});
 
 	it("throws when git is not installed", () => {
@@ -62,14 +65,37 @@ describe("getChangedFiles", () => {
 		);
 	});
 
+	it("throws when repository has no commits", () => {
+		const err = new Error("fatal: unknown revision 'HEAD'") as any;
+		err.status = 128;
+		err.stderr = Buffer.from("fatal: unknown revision 'HEAD'");
+		(execSync as ReturnType<typeof vi.fn>).mockImplementation(() => {
+			throw err;
+		});
+
+		expect(() => getChangedFiles("/project")).toThrow(
+			"Git repository at /project has no commits.",
+		);
+	});
+
 	it("throws when no .ts/.tsx files changed", () => {
 		mockExec({
 			"git diff --name-only HEAD": "README.md\n",
-			"git ls-files --others --exclude-standard -- '*.ts' '*.tsx'": "",
+			"git ls-files --others --exclude-standard": "",
 		});
 
 		expect(() => getChangedFiles("/project")).toThrow(
 			"No uncommitted .ts/.tsx changes found.",
 		);
+	});
+
+	it("deduplicates files appearing in both diff and untracked", () => {
+		mockExec({
+			"git diff --name-only HEAD": "src/lib.ts\n",
+			"git ls-files --others --exclude-standard": "src/lib.ts\n",
+		});
+
+		const result = getChangedFiles("/project");
+		expect(result).toEqual([resolve("/project", "src/lib.ts")]);
 	});
 });
