@@ -20,7 +20,10 @@ program
 	.option("--lcov <file>", "LCOV coverage report file")
 	.option("--path <dir>", "Root directory to analyze", "src")
 	.option("--threshold <n>", "CRAP score threshold", "30")
-	.option("--component-threshold <n>", "CRAP threshold for JSX-returning functions")
+	.option(
+		"--component-threshold <n>",
+		"CRAP threshold for JSX-returning functions",
+	)
 	.option("--min <score>", "Hide entries below this CRAP score")
 	.option("--max <score>", "Hide entries above this CRAP score")
 	.option("--top <n>", "Show only the N worst offenders")
@@ -59,7 +62,7 @@ program
 	.option("--changed", "Only analyze uncommitted .ts/.tsx files")
 	.option(
 		"--sort <fields>",
-			"Sort display by comma-separated fields: crap, file, name, path, function, line, cc, cyclomatic, coverage, hooks, renderBranches, type",
+		"Sort display by comma-separated fields: crap, file, name, path, function, line, cc, cyclomatic, coverage, hooks, renderBranches, type",
 		"crap",
 	)
 	.option("--no-color", "Disable colored output")
@@ -75,7 +78,9 @@ run({
 	lcov: options.lcov,
 	path: options.path,
 	threshold: parseFloat(options.threshold),
-	componentThreshold: options.componentThreshold ? parseFloat(options.componentThreshold) : undefined,
+	componentThreshold: options.componentThreshold
+		? parseFloat(options.componentThreshold)
+		: undefined,
 	min: options.min ? parseFloat(options.min) : undefined,
 	max: options.max ? parseFloat(options.max) : undefined,
 	top: options.top ? parseInt(options.top, 10) : undefined,

@@ -82,12 +82,54 @@ export function formatHuman(
 
 	const table = new Table({
 		head: options.baseline
-			? ["", "CRAP", "Δ", "CC", "Coverage", "Function", "Location"]
-			: ["", "CRAP", "CC", "Coverage", "Function", "Location"],
+			? [
+					"",
+					"CRAP",
+					"Δ",
+					"CC",
+					"Coverage",
+					"Type",
+					"Hooks",
+					"RB",
+					"Function",
+					"Location",
+				]
+			: [
+					"",
+					"CRAP",
+					"CC",
+					"Coverage",
+					"Type",
+					"Hooks",
+					"RB",
+					"Function",
+					"Location",
+				],
 		style: { head: [], border: [] },
 		colAligns: options.baseline
-			? ["center", "right", "right", "right", "left", "left", "left"]
-			: ["center", "right", "right", "left", "left", "left"],
+			? [
+					"center",
+					"right",
+					"right",
+					"right",
+					"left",
+					"left",
+					"left",
+					"right",
+					"left",
+					"left",
+				]
+			: [
+					"center",
+					"right",
+					"right",
+					"left",
+					"left",
+					"left",
+					"right",
+					"left",
+					"left",
+				],
 	});
 
 	for (const e of entries) {
@@ -95,6 +137,9 @@ export function formatHuman(
 		const covBar = coverageBar(e.coverage ?? 0);
 		const covText =
 			e.coverage === null ? "   N/A" : `${e.coverage.toFixed(1)}%`;
+		const type = e.isComponent ? "Comp" : "Util";
+		const hooks = e.hooks?.length ? e.hooks.join(",") : "-";
+		const rb = e.renderBranches ? String(e.renderBranches) : "-";
 
 		if (options.baseline && "delta" in e) {
 			const d = e as unknown as DeltaEntry;
@@ -110,6 +155,9 @@ export function formatHuman(
 				deltaColor(deltaStr),
 				String(e.cyclomatic),
 				`${covBar} ${covText}`,
+				type,
+				hooks,
+				rb,
 				e.function,
 				location,
 			]);
@@ -119,6 +167,9 @@ export function formatHuman(
 				e.crap.toFixed(1),
 				String(e.cyclomatic),
 				`${covBar} ${covText}`,
+				type,
+				hooks,
+				rb,
 				e.function,
 				`${e.file}:${e.line}`,
 			]);
@@ -152,6 +203,7 @@ function getStatus(
 	threshold: number,
 	noColor?: boolean,
 ): string {
+	if (e.hookViolations?.length > 0) return noColor ? "!" : pc.red("!");
 	const t = e.threshold ?? threshold;
 	if (e.crap > t) return noColor ? "✗" : pc.red("✗");
 	if (e.crap > t / 2) return noColor ? "▲" : pc.yellow("▲");

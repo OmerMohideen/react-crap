@@ -1,11 +1,11 @@
-import type { ScoredEntry } from "../score";
+import type { ScoredEntry } from "../score.js";
 
 export function formatSarif(
 	entries: ScoredEntry[],
 	threshold: number,
 	toolVersion: string,
 ): string {
-	const results = entries
+	const crapResults = entries
 		.filter((e) => e.crap > (e.threshold ?? threshold))
 		.map((e) => ({
 			ruleId: "CRAP",
@@ -22,6 +22,26 @@ export function formatSarif(
 				},
 			],
 		}));
+
+	const hookViolationResults = entries
+		.filter((e) => e.hookViolations?.length > 0)
+		.map((e) => ({
+			ruleId: "React-Hook-Violation",
+			level: "error",
+			message: {
+				text: `Function ${e.function} has hook violations: ${e.hookViolations.join(", ")}`,
+			},
+			locations: [
+				{
+					physicalLocation: {
+						artifactLocation: { uri: e.file },
+						region: { startLine: e.line },
+					},
+				},
+			],
+		}));
+
+	const results = [...crapResults, ...hookViolationResults];
 
 	return JSON.stringify(
 		{
@@ -44,6 +64,15 @@ export function formatSarif(
 										text: "CRAP (Change Risk Anti-Patterns) score combines cyclomatic complexity and coverage.",
 									},
 									defaultConfiguration: { level: "warning" },
+								},
+								{
+									id: "React-Hook-Violation",
+									name: "ReactHookViolation",
+									shortDescription: { text: "React Hook called conditionally" },
+									fullDescription: {
+										text: "React Hooks must be called in the exact same order in every component render.",
+									},
+									defaultConfiguration: { level: "error" },
 								},
 							],
 						},

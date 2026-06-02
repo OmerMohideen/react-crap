@@ -124,7 +124,8 @@ async function runOnce(
 		lcov: rawOptions.lcov ?? "coverage/lcov.info",
 		path: rawOptions.path,
 		threshold: rawOptions.threshold ?? config.threshold ?? 30,
-		componentThreshold: rawOptions.componentThreshold ?? config.componentThreshold,
+		componentThreshold:
+			rawOptions.componentThreshold ?? config.componentThreshold,
 		min: rawOptions.min ?? config.min,
 		max: rawOptions.max ?? config.max,
 		top: rawOptions.top ?? config.top,

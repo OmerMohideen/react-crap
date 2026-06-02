@@ -1,4 +1,4 @@
-import type { DeltaResult } from "../delta";
+import type { DeltaResult } from "../delta.js";
 
 export function formatPrComment(
 	result: DeltaResult,
@@ -15,14 +15,38 @@ export function formatPrComment(
 	);
 	if (regressions.length > 0) {
 		lines.push("### ⚠️ Regressions & New Functions\n");
-		lines.push("| Status | CRAP | Δ | CC | Coverage | Function | Location |");
-		lines.push("|--------|------|---|----|----------|----------|----------|");
+		lines.push(
+			"| Status | CRAP | Δ | CC | Coverage | Type | Hooks | RB | Function | Location |",
+		);
+		lines.push(
+			"|--------|------|---|----|----------|------|-------|----|----------|----------|",
+		);
 		for (const e of regressions) {
 			const cov = e.coverage === null ? "N/A" : `${e.coverage.toFixed(1)}%`;
 			const deltaStr =
 				e.delta > 0 ? `+${e.delta.toFixed(1)}` : e.delta.toFixed(1);
+			const type = e.isComponent ? "Comp" : "Util";
+			const hooks = e.hooks?.length ? e.hooks.join(",") : "-";
+			const rb = e.renderBranches ? String(e.renderBranches) : "-";
 			lines.push(
-				`| ${e.status} | ${e.crap.toFixed(1)} | ${deltaStr} | ${e.cyclomatic} | ${cov} | \`${e.function}\` | ${e.file}:${e.line} |`,
+				`| ${e.status} | ${e.crap.toFixed(1)} | ${deltaStr} | ${e.cyclomatic} | ${cov} | ${type} | ${hooks} | ${rb} | \`${e.function}\` | ${e.file}:${e.line} |`,
+			);
+		}
+		lines.push("");
+	}
+
+	// Hook violations
+	const hookViolations = result.entries.filter(
+		(e) => e.hookViolations?.length > 0,
+	);
+	if (hookViolations.length > 0) {
+		lines.push("### ⚠️ Hook Violations");
+		lines.push("");
+		lines.push("| Function | Location | Violations |");
+		lines.push("|----------|----------|------------|");
+		for (const e of hookViolations) {
+			lines.push(
+				`| \`${e.function}\` | ${e.file}:${e.line} | ${e.hookViolations.join(", ")} |`,
 			);
 		}
 		lines.push("");
