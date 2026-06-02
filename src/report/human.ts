@@ -138,7 +138,7 @@ export function formatHuman(
 		const covText =
 			e.coverage === null ? "   N/A" : `${e.coverage.toFixed(1)}%`;
 		const type = e.isComponent ? "Comp" : "Util";
-		const hooks = e.hooks?.length ? e.hooks.join(",") : "-";
+		const hooks = formatHooks(e.hooks);
 		const rb = e.renderBranches ? String(e.renderBranches) : "-";
 
 		if (options.baseline && "delta" in e) {
@@ -196,6 +196,19 @@ export function formatHuman(
 	}
 
 	return lines.join("\n");
+}
+
+function formatHooks(hooks: string[]): string {
+	if (!hooks.length) return "-";
+	const full = hooks.join(",");
+	if (full.length <= 30) return full;
+	for (let i = hooks.length - 1; i >= 0; i--) {
+		const partial = hooks.slice(0, i).join(",");
+		if (partial.length <= 27) {
+			return `${partial}...`;
+		}
+	}
+	return `${hooks[0].slice(0, 27)}...`;
 }
 
 function getStatus(
