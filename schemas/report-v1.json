@@ -1,26 +1,37 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://raw.githubusercontent.com/OmerMohideen/react-crap/master/schemas/report-v1.json",
-  "type": "object",
-  "required": ["version", "entries"],
-  "properties": {
-    "$schema": { "type": "string" },
-    "version": { "type": "string" },
-    "entries": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["file", "function", "line", "cyclomatic", "coverage", "crap"],
-        "properties": {
-          "file": { "type": "string" },
-          "function": { "type": "string" },
-          "line": { "type": "integer" },
-          "cyclomatic": { "type": "number" },
-          "coverage": { "type": ["number", "null"] },
-          "crap": { "type": "number" },
-          "package": { "type": "string" }
-        }
-      }
-    }
-  }
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "https://raw.githubusercontent.com/OmerMohideen/react-crap/master/schemas/report-v1.json",
+	"type": "object",
+	"required": ["version", "entries"],
+	"properties": {
+		"$schema": { "type": "string" },
+		"version": { "type": "string" },
+		"entries": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"required": [
+					"file",
+					"function",
+					"line",
+					"cyclomatic",
+					"coverage",
+					"crap"
+				],
+				"properties": {
+					"file": { "type": "string" },
+					"function": { "type": "string" },
+					"line": { "type": "integer" },
+					"cyclomatic": { "type": "number" },
+					"coverage": { "type": ["number", "null"] },
+					"crap": { "type": "number" },
+					"package": { "type": "string" },
+					"hooks": { "type": "array", "items": { "type": "string" } },
+					"hookViolations": { "type": "array", "items": { "type": "string" } },
+					"isComponent": { "type": "boolean" },
+					"renderBranches": { "type": "integer" }
+				}
+			}
+		}
+	}
 }

@@ -117,4 +117,82 @@ describe("integration", () => {
 			}
 		}
 	});
+
+	it("includes React-aware fields in JSON and human output", async () => {
+		const fixturePath = resolve("test/fixtures/sample");
+		const lcovPath = resolve(fixturePath, "coverage/lcov.info");
+		const srcPath = resolve(fixturePath, "src");
+
+		// JSON format
+		let jsonOutput = "";
+		const jsonSpy = vi
+			.spyOn(console, "log")
+			.mockImplementation((...args: any[]) => {
+				jsonOutput += args.join(" ");
+			});
+
+		try {
+			await run({
+				lcov: lcovPath,
+				path: srcPath,
+				threshold: 30,
+				missing: "pessimistic",
+				exclude: [],
+				allow: [],
+				format: "json",
+				summary: false,
+				failAbove: false,
+				failRegression: false,
+				epsilon: 0.01,
+			});
+		} finally {
+			jsonSpy.mockRestore();
+		}
+
+		const parsed = JSON.parse(jsonOutput);
+		expect(parsed.entries.length).toBeGreaterThan(0);
+
+		for (const entry of parsed.entries) {
+			expect(entry).toHaveProperty("isComponent");
+			expect(entry).toHaveProperty("hooks");
+			expect(entry).toHaveProperty("renderBranches");
+		}
+
+		const components = parsed.entries.filter((e: any) => e.isComponent);
+		expect(components.length).toBeGreaterThan(0);
+
+		const broken = parsed.entries.find((e: any) => e.function === "BrokenHook");
+		expect(broken).toBeDefined();
+		expect(broken.hookViolations.length).toBeGreaterThan(0);
+
+		// Human format
+		let humanOutput = "";
+		const humanSpy = vi
+			.spyOn(console, "log")
+			.mockImplementation((...args: any[]) => {
+				humanOutput += args.join(" ");
+			});
+
+		try {
+			await run({
+				lcov: lcovPath,
+				path: srcPath,
+				threshold: 30,
+				missing: "pessimistic",
+				exclude: [],
+				allow: [],
+				format: "human",
+				summary: false,
+				failAbove: false,
+				failRegression: false,
+				epsilon: 0.01,
+				noColor: true,
+			});
+		} finally {
+			humanSpy.mockRestore();
+		}
+
+		expect(humanOutput).toContain("Comp");
+		expect(humanOutput).toContain("!");
+	});
 });
