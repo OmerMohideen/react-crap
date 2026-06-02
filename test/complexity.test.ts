@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { analyzeComplexity } from "../src/complexity";
 
-const fixture = resolve("test/fixtures/sample/src/lib.ts");
+const fixture = resolve("test/fixtures/sample/src/lib.tsx");
 
 describe("analyzeComplexity", () => {
 	it("counts cyclomatic complexity", async () => {
@@ -29,5 +29,37 @@ describe("analyzeComplexity", () => {
 
 		const ignored = result.find((r) => r.function === "ignoredFunc");
 		expect(ignored).toBeUndefined();
+	});
+
+	it("detects hooks and violations", async () => {
+		const result = await analyzeComplexity([fixture]);
+		const broken = result.find((r) => r.function === "BrokenHook");
+		expect(broken).toBeDefined();
+		expect(broken?.hooks).toContain("useState");
+		expect(broken?.hooks).toContain("useEffect");
+		expect(broken?.hookViolations.length).toBeGreaterThan(0);
+		expect(broken?.hookViolations.some((v) => v.includes("useEffect"))).toBe(
+			true,
+		);
+
+		const valid = result.find((r) => r.function === "ValidComponent");
+		expect(valid?.hooks).toEqual([]);
+		expect(valid?.hookViolations).toEqual([]);
+	});
+
+	it("tags components correctly", async () => {
+		const result = await analyzeComplexity([fixture]);
+		const valid = result.find((r) => r.function === "ValidComponent");
+		expect(valid?.isComponent).toBe(true);
+		const broken = result.find((r) => r.function === "BrokenHook");
+		expect(broken?.isComponent).toBe(true);
+		const trivial = result.find((r) => r.function === "trivial");
+		expect(trivial?.isComponent).toBe(false);
+	});
+
+	it("counts render branches", async () => {
+		const result = await analyzeComplexity([fixture]);
+		const valid = result.find((r) => r.function === "ValidComponent");
+		expect(valid?.renderBranches).toBe(1); // items.length > 0 && <ul>...</ul>
 	});
 });

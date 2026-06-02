@@ -9,6 +9,10 @@ export interface ComplexityEntry {
 	cyclomatic: number;
 	bodyHash: string;
 	threshold?: number;
+	hooks: string[];
+	hookViolations: string[];
+	isComponent: boolean;
+	renderBranches: number;
 }
 
 export async function analyzeComplexity(
@@ -52,6 +56,7 @@ async function analyzeFile(
 		content,
 		tsMod.ScriptTarget.ES2022,
 		true, // setParentNodes
+		tsMod.ScriptKind.TSX,
 	);
 
 	if (onProgress && current && total) {
@@ -85,6 +90,11 @@ async function analyzeFile(
 				.digest("hex")
 				.slice(0, 16);
 			const threshold = getThreshold(node, sourceFile, tsMod);
+			const hooks: string[] = [];
+			const hookViolations: string[] = [];
+			collectHooks(node, sourceFile, tsMod, hooks, hookViolations, true);
+			const isComponent = detectComponent(node, sourceFile, tsMod);
+			const renderBranches = countRenderBranches(node, sourceFile, tsMod);
 
 			results.push({
 				file: sourceFile.fileName,
@@ -94,6 +104,10 @@ async function analyzeFile(
 				cyclomatic: cc,
 				bodyHash,
 				threshold,
+				hooks,
+				hookViolations,
+				isComponent,
+				renderBranches,
 			});
 		}
 
@@ -338,6 +352,173 @@ async function analyzeFile(
 			}
 			tsMod.forEachChild(child, visitChild);
 		});
+		return count;
+	}
+
+	function getHookName(expr: any, tsMod: any): string | undefined {
+		if (tsMod.isIdentifier(expr) && /^use[A-Z]/.test(expr.text)) {
+			return expr.text;
+		}
+		if (
+			tsMod.isPropertyAccessExpression(expr) &&
+			tsMod.isIdentifier(expr.name) &&
+			/^use[A-Z]/.test(expr.name.text)
+		) {
+			return expr.name.text;
+		}
+		return undefined;
+	}
+
+	function collectHooks(
+		node: any,
+		sourceFile: any,
+		tsMod: any,
+		hooks: string[],
+		violations: string[],
+		topLevel: boolean,
+	) {
+		tsMod.forEachChild(node, function visitChild(child: any) {
+			if (tsMod.isCallExpression(child)) {
+				const name = getHookName(child.expression, tsMod);
+				if (name) {
+					hooks.push(name);
+					if (!topLevel) {
+						const line =
+							sourceFile.getLineAndCharacterOfPosition(
+								child.getStart(sourceFile),
+							).line + 1;
+						violations.push(`conditional-hook: ${name} at line ${line}`);
+					}
+				}
+			}
+			const nextTopLevel =
+				topLevel &&
+				!tsMod.isIfStatement(child) &&
+				!tsMod.isSwitchStatement(child) &&
+				!tsMod.isConditionalExpression(child) &&
+				!tsMod.isForStatement(child) &&
+				!tsMod.isForInStatement(child) &&
+				!tsMod.isForOfStatement(child) &&
+				!tsMod.isWhileStatement(child) &&
+				!tsMod.isDoStatement(child) &&
+				!tsMod.isCatchClause(child) &&
+				!(
+					tsMod.isBinaryExpression(child) &&
+					(child.operatorToken.kind ===
+						tsMod.SyntaxKind.AmpersandAmpersandToken ||
+						child.operatorToken.kind === tsMod.SyntaxKind.BarBarToken ||
+						child.operatorToken.kind === tsMod.SyntaxKind.QuestionQuestionToken)
+				);
+			collectHooks(child, sourceFile, tsMod, hooks, violations, nextTopLevel);
+		});
+	}
+
+	function detectComponent(node: any, _sourceFile: any, tsMod: any): boolean {
+		const body = node.body;
+		if (!body) return false;
+
+		function isJsxExpression(expr: any, _tsMod: any): boolean {
+			if (!expr) return false;
+			return (
+				_tsMod.isJsxElement(expr) ||
+				_tsMod.isJsxSelfClosingElement(expr) ||
+				_tsMod.isJsxFragment(expr) ||
+				(_tsMod.isJsxExpression(expr) &&
+					expr.expression &&
+					isJsxExpression(expr.expression, _tsMod))
+			);
+		}
+
+		function isJsxVariable(name: string, scopeNode: any, _tsMod: any): boolean {
+			let yes = false;
+			_tsMod.forEachChild(scopeNode, function scan(child: any) {
+				if (yes) return;
+				if (
+					_tsMod.isVariableDeclaration(child) &&
+					_tsMod.isIdentifier(child.name) &&
+					child.name.text === name &&
+					child.initializer &&
+					isJsxExpression(child.initializer, _tsMod)
+				) {
+					yes = true;
+					return;
+				}
+				_tsMod.forEachChild(child, scan);
+			});
+			return yes;
+		}
+
+		function hasJsx(n: any): boolean {
+			if (
+				tsMod.isJsxElement(n) ||
+				tsMod.isJsxSelfClosingElement(n) ||
+				tsMod.isJsxFragment(n)
+			) {
+				return true;
+			}
+			if (tsMod.isReturnStatement(n)) {
+				if (n.expression) {
+					if (isJsxExpression(n.expression, tsMod)) return true;
+					if (tsMod.isIdentifier(n.expression)) {
+						return isJsxVariable(n.expression.text, body, tsMod);
+					}
+				}
+			}
+			let found = false;
+			tsMod.forEachChild(n, (child: any) => {
+				if (!found) found = hasJsx(child);
+			});
+			return found;
+		}
+
+		return hasJsx(body);
+	}
+
+	function countRenderBranches(
+		node: any,
+		_sourceFile: any,
+		tsMod: any,
+	): number {
+		let count = 0;
+
+		function containsJsx(n: any): boolean {
+			if (!n) return false;
+			if (
+				tsMod.isJsxElement(n) ||
+				tsMod.isJsxSelfClosingElement(n) ||
+				tsMod.isJsxFragment(n)
+			)
+				return true;
+			let found = false;
+			tsMod.forEachChild(n, (child: any) => {
+				if (!found) found = containsJsx(child);
+			});
+			return found;
+		}
+
+		function visitChild(child: any) {
+			if (tsMod.isIfStatement(child) || tsMod.isConditionalExpression(child)) {
+				if (
+					containsJsx(child.thenStatement ?? child.whenTrue) ||
+					containsJsx(child.elseStatement ?? child.whenFalse)
+				) {
+					count++;
+				}
+			} else if (
+				tsMod.isBinaryExpression(child) &&
+				(child.operatorToken.kind ===
+					tsMod.SyntaxKind.AmpersandAmpersandToken ||
+					child.operatorToken.kind === tsMod.SyntaxKind.BarBarToken ||
+					child.operatorToken.kind === tsMod.SyntaxKind.QuestionQuestionToken)
+			) {
+				if (containsJsx(child.right)) {
+					count++;
+				}
+			}
+			tsMod.forEachChild(child, visitChild);
+		}
+
+		tsMod.forEachChild(node, visitChild);
 		return count;
 	}
 
