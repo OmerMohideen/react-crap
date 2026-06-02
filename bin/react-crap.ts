@@ -56,6 +56,11 @@ program
 	.option("--verbose", "Print detailed progress information")
 	.option("--watch", "Re-run automatically when files change")
 	.option("--changed", "Only analyze uncommitted .ts/.tsx files")
+	.option(
+		"--sort <fields>",
+		"Sort display by comma-separated fields: crap, file, name, path, function, line, cc, cyclomatic, coverage",
+		"crap",
+	)
 	.option("--no-color", "Disable colored output")
 	.option("--output <file>", "Write output to file instead of stdout");
 
@@ -87,6 +92,7 @@ run({
 	verbose: options.verbose ?? false,
 	watch: options.watch ?? false,
 	changed: options.changed ?? false,
+	sort: options.sort,
 	output: options.output,
 	noColor,
 }).catch((err) => {

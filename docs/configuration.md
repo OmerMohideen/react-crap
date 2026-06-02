@@ -16,7 +16,8 @@ You can configure `react-crap` via CLI flags, a `.react-crap.json` file, or inli
   "allow": ["use*"],
   "failAbove": true,
   "workspace": false,
-  "verbose": false
+  "verbose": false,
+  "sort": "crap"
 }
 ```
 
@@ -37,6 +38,7 @@ You can configure `react-crap` via CLI flags, a `.react-crap.json` file, or inli
 | `workspace` | `boolean` | `false` | Analyze all workspace packages |
 | `verbose` | `boolean` | `false` | Print step-by-step progress |
 | `watch` | `boolean` | `false` | Re-run automatically on file changes |
+| `sort` | `string` | `"crap"` | Comma-separated display sort fields. `crap` (default), `file`/`name`, `path`, `function`, `line`, `cc`/`cyclomatic`, `coverage`. Combine like `file,function`. `--top` always selects the worst offenders first regardless of sort order. |
 
 ### Keys NOT Allowed in Config
 
@@ -100,6 +102,7 @@ npx react-crap \
   --verbose \
   --watch \
   --changed \
+  --sort crap \
   --no-color \
   --output report.txt
 ```

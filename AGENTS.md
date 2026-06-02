@@ -90,9 +90,26 @@ Uses the project's own `typescript` package (resolved from `node_modules` near `
 
 Config file: `.react-crap.json`. Walks up directories from `--path` until found. Supports all flags except `--lcov`, `--baseline`, `--output`, `--jobs`, `--no-color`, `--help`, `--changed`.
 
-Allowed keys: `threshold`, `failAbove`, `missing`, `exclude`, `allow`, `epsilon`, `min`, `max`, `top`, `onlyFailures`, `workspace`, `verbose`, `watch`.
+Allowed keys: `threshold`, `failAbove`, `missing`, `exclude`, `allow`, `epsilon`, `min`, `max`, `top`, `onlyFailures`, `workspace`, `verbose`, `watch`, `sort`.
 
 Unknown keys are rejected with a validation error that includes a typo suggestion (e.g. `"treshold"` → `Did you mean "threshold"?`). This uses Levenshtein distance with a tolerance of ≤2 character differences.
+
+### Sorting
+
+Entries are scored and ranked by CRAP descending first so that filters like `--top` always select the worst offenders regardless of the chosen display order. After filtering, the final display sort is applied.
+
+`--sort` accepts comma-separated fields:
+- `crap` — CRAP score descending (default)
+- `file` or `name` — filename basename ascending
+- `path` — full file path ascending
+- `function` — function name ascending
+- `line` — line number ascending
+- `cc` or `cyclomatic` — cyclomatic complexity descending
+- `coverage` — coverage percentage descending
+
+Combine fields for multi-column sorting: `--sort file,function` or `--sort function,path`.
+
+The `file` sort is recommended for JSON baselines because it produces stable output where entries do not reorder when their scores change, making diffs much easier to read.
 
 ### Filtering Precedence
 
@@ -101,7 +118,7 @@ Filters applied in this exact order in `src/score.ts`:
 1. `--min`: Remove entries with CRAP < value
 2. `--max`: Remove entries with CRAP > value
 3. `--only-failures`: Keep only entries above threshold
-4. `--top`: Slice to N worst remaining (after sorting by CRAP desc)
+4. `--top`: Slice to N worst remaining (after sorting)
 
 ### Auto-Cap
 
@@ -162,8 +179,8 @@ test/fixtures/sample/
 ### Regression Gate
 
 ```yaml
-# On master: save baseline artifact
-- run: npx react-crap --lcov coverage/lcov.info --format json --output baseline.json
+# On master: save baseline artifact (use --sort file for stable diffs)
+- run: npx react-crap --lcov coverage/lcov.info --format json --sort file --output baseline.json
 - uses: actions/upload-artifact@v4
   with:
     name: crap-baseline

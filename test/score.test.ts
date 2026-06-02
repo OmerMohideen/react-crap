@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeCrap, filter, score } from "../src/score";
+import { computeCrap, filter, score, sortEntries } from "../src/score";
 
 describe("computeCrap", () => {
 	it("returns low score for simple, covered code", () => {
@@ -37,6 +37,140 @@ describe("score", () => {
 		const result = score(entries, { missing: "pessimistic", threshold: 30 });
 		expect(result[0].function).toBe("b");
 		expect(result[1].function).toBe("a");
+	});
+});
+
+describe("sortEntries", () => {
+	it("sorts by path then function ascending", () => {
+		const entries = [
+			{
+				file: "b.ts",
+				function: "b",
+				line: 1,
+				cyclomatic: 12,
+				coverage: 0,
+				crap: 100,
+			},
+			{
+				file: "a.ts",
+				function: "b",
+				line: 2,
+				cyclomatic: 1,
+				coverage: 100,
+				crap: 1,
+			},
+			{
+				file: "a.ts",
+				function: "a",
+				line: 3,
+				cyclomatic: 5,
+				coverage: 50,
+				crap: 20,
+			},
+		];
+		const result = sortEntries(entries, "path,function");
+		expect(result[0].function).toBe("a");
+		expect(result[0].file).toBe("a.ts");
+		expect(result[1].function).toBe("b");
+		expect(result[1].file).toBe("a.ts");
+		expect(result[2].function).toBe("b");
+		expect(result[2].file).toBe("b.ts");
+	});
+
+	it("preserves CRAP order when sort is crap", () => {
+		const entries = [
+			{
+				file: "a.ts",
+				function: "a",
+				line: 1,
+				cyclomatic: 1,
+				coverage: 100,
+				crap: 1,
+			},
+			{
+				file: "a.ts",
+				function: "b",
+				line: 2,
+				cyclomatic: 12,
+				coverage: 0,
+				crap: 100,
+			},
+		];
+		const result = sortEntries(entries, "crap");
+		expect(result[0].crap).toBe(1);
+		expect(result[1].crap).toBe(100);
+	});
+
+	it("sorts by file basename, ignoring directory", () => {
+		const entries = [
+			{
+				file: "src/z/foo.ts",
+				function: "a",
+				line: 1,
+				cyclomatic: 1,
+				coverage: 100,
+				crap: 1,
+			},
+			{
+				file: "src/a/bar.ts",
+				function: "b",
+				line: 2,
+				cyclomatic: 12,
+				coverage: 0,
+				crap: 100,
+			},
+		];
+		const result = sortEntries(entries, "file");
+		expect(result[0].file).toBe("src/a/bar.ts");
+		expect(result[1].file).toBe("src/z/foo.ts");
+	});
+
+	it("sorts by function name", () => {
+		const entries = [
+			{
+				file: "a.ts",
+				function: "z",
+				line: 1,
+				cyclomatic: 1,
+				coverage: 100,
+				crap: 1,
+			},
+			{
+				file: "a.ts",
+				function: "a",
+				line: 2,
+				cyclomatic: 12,
+				coverage: 0,
+				crap: 100,
+			},
+		];
+		const result = sortEntries(entries, "function");
+		expect(result[0].function).toBe("a");
+		expect(result[1].function).toBe("z");
+	});
+
+	it("sorts by comma-separated fields", () => {
+		const entries = [
+			{
+				file: "b.ts",
+				function: "a",
+				line: 1,
+				cyclomatic: 1,
+				coverage: 100,
+				crap: 1,
+			},
+			{
+				file: "a.ts",
+				function: "b",
+				line: 2,
+				cyclomatic: 12,
+				coverage: 0,
+				crap: 100,
+			},
+		];
+		const result = sortEntries(entries, "function,file");
+		expect(result[0].function).toBe("a");
+		expect(result[1].function).toBe("b");
 	});
 });
 

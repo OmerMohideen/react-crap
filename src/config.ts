@@ -15,6 +15,7 @@ const ALLOWED_KEYS = new Set([
 	"workspace",
 	"verbose",
 	"watch",
+	"sort",
 ]);
 
 export interface Config {
@@ -31,6 +32,7 @@ export interface Config {
 	workspace?: boolean;
 	verbose?: boolean;
 	watch?: boolean;
+	sort?: string;
 }
 
 export function loadConfig(startDir: string): Config {

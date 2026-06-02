@@ -17,7 +17,7 @@ import { formatDeltaJson, formatJson } from "./report/json.js";
 import { formatMarkdown } from "./report/markdown.js";
 import { formatPrComment } from "./report/pr-comment.js";
 import { formatSarif } from "./report/sarif.js";
-import { filter, score } from "./score.js";
+import { filter, score, sortEntries } from "./score.js";
 import { checkForUpdate, getLocalVersion } from "./version-check.js";
 import { walkFiles } from "./walker.js";
 
@@ -45,6 +45,7 @@ export interface RunOptions {
 	watch?: boolean;
 	changed?: boolean;
 	noColor?: boolean;
+	sort?: string;
 }
 
 export async function run(rawOptions: RunOptions): Promise<void> {
@@ -146,6 +147,7 @@ async function runOnce(
 		watch: rawOptions.watch || config.watch || false,
 		changed: rawOptions.changed ?? false,
 		noColor: rawOptions.noColor || false,
+		sort: rawOptions.sort ?? config.sort ?? "crap",
 	};
 
 	const log = (message: string) => {
@@ -334,9 +336,12 @@ async function runOnce(
 	});
 	log(`After filters: ${filtered.length} function(s)`);
 
+	// Apply user-facing sort order after filtering so --top always picks the worst
+	const sorted = sortEntries(filtered, options.sort);
+
 	// Apply allow list
 	const isAllowed = picomatch(options.allow);
-	const visible = filtered.filter((e) => {
+	const visible = sorted.filter((e) => {
 		if (options.allow.length === 0) return true;
 		if (isAllowed(e.function)) return false;
 		if (isAllowed(e.file)) return false;

@@ -32,7 +32,7 @@ Save a baseline on `master`, then compare PRs against it:
 **On `master` branch:**
 ```yaml
 - run: npx vitest run --coverage
-- run: npx react-crap --lcov coverage/lcov.info --format json --output baseline.json
+- run: npx react-crap --lcov coverage/lcov.info --format json --sort file --output baseline.json
 - uses: actions/upload-artifact@v4
   with:
     name: crap-baseline
@@ -223,6 +223,14 @@ pipelines:
 ```
 
 ## Tips for CI
+
+### Use `--sort file` for Stable Baselines
+
+When generating JSON baselines for regression gates, use `--sort file` so entries stay in a fixed order as scores change. This makes PR diffs much easier to read:
+
+```bash
+npx react-crap --lcov coverage/lcov.info --format json --sort file --output baseline.json
+```
 
 ### Use `--jobs` in Resource-Constrained Environments
 
