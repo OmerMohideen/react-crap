@@ -6,6 +6,10 @@ export interface ScoredEntry {
 	coverage: number | null;
 	crap: number;
 	threshold?: number;
+	hooks: string[];
+	hookViolations: string[];
+	isComponent: boolean;
+	renderBranches: number;
 }
 
 export function computeCrap(
@@ -31,6 +35,10 @@ export function score(
 		cyclomatic: number;
 		coverage: number | null;
 		threshold?: number;
+		hooks: string[];
+		hookViolations: string[];
+		isComponent: boolean;
+		renderBranches: number;
 	}[],
 	options: {
 		missing: "pessimistic" | "optimistic" | "skip";
@@ -50,6 +58,10 @@ export function score(
 			coverage: e.coverage,
 			crap,
 			threshold: e.threshold,
+			hooks: e.hooks,
+			hookViolations: e.hookViolations,
+			isComponent: e.isComponent,
+			renderBranches: e.renderBranches,
 		});
 	}
 
@@ -72,7 +84,10 @@ type SortField =
 	| "file"
 	| "name"
 	| "function"
-	| "line";
+	| "line"
+	| "hooks"
+	| "renderBranches"
+	| "type";
 
 function compareField(
 	a: ScoredEntry,
@@ -102,6 +117,12 @@ function compareField(
 			return a.function.localeCompare(b.function);
 		case "line":
 			return a.line - b.line;
+		case "hooks":
+			return (b.hooks?.length ?? 0) - (a.hooks?.length ?? 0);
+		case "renderBranches":
+			return (b.renderBranches ?? 0) - (a.renderBranches ?? 0);
+		case "type":
+			return Number(b.isComponent) - Number(a.isComponent);
 		default:
 			return 0;
 	}
@@ -141,6 +162,7 @@ export function filter(
 		top?: number;
 		onlyFailures?: boolean;
 		threshold?: number;
+		componentThreshold?: number;
 	},
 ): ScoredEntry[] {
 	let result = entries;
@@ -154,7 +176,12 @@ export function filter(
 	}
 
 	if (options.onlyFailures) {
-		result = result.filter((e) => e.crap > (options.threshold ?? 30));
+		result = result.filter((e) => {
+			const t = e.isComponent
+				? (options.componentThreshold ?? options.threshold ?? 30)
+				: (options.threshold ?? 30);
+			return e.crap > t;
+		});
 	}
 
 	if (options.top !== undefined) {

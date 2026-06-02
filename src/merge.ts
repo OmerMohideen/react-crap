@@ -8,6 +8,10 @@ export interface MergedEntry {
 	cyclomatic: number;
 	coverage: number | null;
 	threshold?: number;
+	hooks: string[];
+	hookViolations: string[];
+	isComponent: boolean;
+	renderBranches: number;
 }
 
 export function merge(
@@ -61,6 +65,10 @@ export function merge(
 			cyclomatic: comp.cyclomatic,
 			coverage: covPct,
 			threshold: comp.threshold,
+			hooks: comp.hooks,
+			hookViolations: comp.hookViolations,
+			isComponent: comp.isComponent,
+			renderBranches: comp.renderBranches,
 		});
 	}
 

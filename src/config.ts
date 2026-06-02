@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 
 const ALLOWED_KEYS = new Set([
 	"threshold",
+	"componentThreshold",
 	"failAbove",
 	"missing",
 	"exclude",
@@ -20,6 +21,7 @@ const ALLOWED_KEYS = new Set([
 
 export interface Config {
 	threshold?: number;
+	componentThreshold?: number;
 	failAbove?: boolean;
 	missing?: "pessimistic" | "optimistic" | "skip";
 	exclude?: string[];

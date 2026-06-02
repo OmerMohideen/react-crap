@@ -25,6 +25,7 @@ export interface RunOptions {
 	lcov?: string;
 	path: string;
 	threshold: number;
+	componentThreshold?: number;
 	min?: number;
 	max?: number;
 	top?: number;
@@ -123,6 +124,7 @@ async function runOnce(
 		lcov: rawOptions.lcov ?? "coverage/lcov.info",
 		path: rawOptions.path,
 		threshold: rawOptions.threshold ?? config.threshold ?? 30,
+		componentThreshold: rawOptions.componentThreshold ?? config.componentThreshold,
 		min: rawOptions.min ?? config.min,
 		max: rawOptions.max ?? config.max,
 		top: rawOptions.top ?? config.top,
@@ -333,6 +335,7 @@ async function runOnce(
 		top: options.top,
 		onlyFailures: options.onlyFailures,
 		threshold: options.threshold,
+		componentThreshold: options.componentThreshold,
 	});
 	log(`After filters: ${filtered.length} function(s)`);
 

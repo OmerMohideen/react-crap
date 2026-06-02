@@ -8,6 +8,10 @@ export interface BaselineEntry {
 	coverage: number | null;
 	crap: number;
 	bodyHash?: string;
+	hooks: string[];
+	hookViolations: string[];
+	isComponent: boolean;
+	renderBranches: number;
 }
 
 export interface DeltaEntry extends BaselineEntry {
