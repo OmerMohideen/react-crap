@@ -1,3 +1,10 @@
+# [1.4.0](https://github.com/OmerMohideen/react-crap/compare/v1.3.1...v1.4.0) (2026-06-02)
+
+
+### Features
+
+* add --sort option for flexible output ordering ([#4](https://github.com/OmerMohideen/react-crap/issues/4)) ([79c4bca](https://github.com/OmerMohideen/react-crap/commit/79c4bcad7edbe768304bac5a7c30eeaa7dd27ae1))
+
 ## [1.3.1](https://github.com/OmerMohideen/react-crap/compare/v1.3.0...v1.3.1) (2026-05-31)
 
 
