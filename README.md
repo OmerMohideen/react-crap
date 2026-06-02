@@ -63,6 +63,9 @@ npx react-crap --lcov coverage/lcov.info --path src --changed
 
 # 8. Generate an HTML report.
 npx react-crap --lcov coverage/lcov.info --path src --format html --output crap-report.html
+
+# 9. Generate a stable JSON baseline (sorted by file/name for readable diffs).
+npx react-crap --lcov coverage/lcov.info --format json --sort file --output baseline.json
 ```
 
 Example output:
@@ -102,6 +105,7 @@ Example output:
 | `--baseline <FILE>` | — | JSON from a previous `--format json` run. Enables delta mode (shows Δ column). Functions that moved between files (same name, body unchanged) are detected and reported as `Moved` rather than as separate New + Removed entries; renderers show `← <previous_file>` next to the new location. |
 | `--fail-regression` | off | Exit 1 if any function's score increased since `--baseline`. `Moved` (pure relocation, no score change) is not a regression. |
 | `--epsilon <VALUE>` | `0.01` | Tolerance for the regression detector. Score deltas with absolute value at or below this count as `Unchanged`. Set to `0.0` to flag every increase, or higher to tolerate noisy coverage. Must be non-negative. |
+| `--sort <fields>` | `crap` | Comma-separated display sort fields. `crap` (default) shows highest-risk first. `file` (or `name`) sorts by filename. `path` sorts by full file path. `function` sorts by function name. `line` sorts by line number. `cc`/`cyclomatic` sorts by complexity descending. `coverage` sorts by coverage descending. Combine fields like `file,function` or `function,path`. `--top` always selects the worst offenders first regardless of sort order. |
 | `--jobs <N>` | host CPUs | Cap parallel source-file analysis at `N` threads. Useful in memory-constrained CI/Docker environments. Must be a positive integer. |
 | `--output <FILE>` | — | Write output to FILE instead of stdout (useful for saving JSON baselines). |
 | `--no-color` | — | Disable colored output. |
@@ -131,7 +135,8 @@ Any flag can be set persistently in `.react-crap.json` at the project root (or a
   "allow": ["src/generated/**"],
   "failAbove": true,
   "workspace": false,
-  "verbose": false
+  "verbose": false,
+  "sort": "crap"
 }
 ```
 
@@ -291,7 +296,7 @@ Save a baseline on `master`, then fail on any PR that makes a score go up. This 
 ```yaml
 # On master branch — upload baseline as a CI artifact
 - run: npx vitest run --coverage
-- run: npx react-crap --lcov coverage/lcov.info --format json --output baseline.json
+- run: npx react-crap --lcov coverage/lcov.info --format json --sort file --output baseline.json
 - uses: actions/upload-artifact@v4
   with:
     name: crap-baseline

@@ -53,9 +53,84 @@ export function score(
 		});
 	}
 
-	// Sort by CRAP descending
+	// Always sort by CRAP descending so filters like --top work consistently
 	scored.sort((a, b) => b.crap - a.crap);
 	return scored;
+}
+
+function basename(path: string): string {
+	const idx = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+	return idx >= 0 ? path.slice(idx + 1) : path;
+}
+
+type SortField =
+	| "crap"
+	| "cc"
+	| "cyclomatic"
+	| "coverage"
+	| "path"
+	| "file"
+	| "name"
+	| "function"
+	| "line";
+
+function compareField(
+	a: ScoredEntry,
+	b: ScoredEntry,
+	field: SortField,
+): number {
+	switch (field) {
+		case "crap":
+			return b.crap - a.crap; // descending
+		case "cc":
+		case "cyclomatic":
+			return b.cyclomatic - a.cyclomatic; // descending
+		case "coverage": {
+			const covA = a.coverage ?? -1;
+			const covB = b.coverage ?? -1;
+			return covB - covA; // descending
+		}
+		case "path":
+			return a.file.localeCompare(b.file);
+		case "file":
+		case "name": {
+			const baseA = basename(a.file);
+			const baseB = basename(b.file);
+			return baseA.localeCompare(baseB);
+		}
+		case "function":
+			return a.function.localeCompare(b.function);
+		case "line":
+			return a.line - b.line;
+		default:
+			return 0;
+	}
+}
+
+function parseSort(sort: string): SortField[] {
+	const parts = sort.split(",").map((s) => s.trim().toLowerCase() as SortField);
+	// default to "crap" if empty or invalid
+	if (parts.length === 0 || parts.every((p) => !p)) {
+		return ["crap"];
+	}
+	return parts;
+}
+
+export function sortEntries(
+	entries: ScoredEntry[],
+	sort: string = "crap",
+): ScoredEntry[] {
+	const fields = parseSort(sort);
+	if (fields.length === 1 && (fields[0] === "crap" || !fields[0])) {
+		return entries;
+	}
+	return [...entries].sort((a, b) => {
+		for (const field of fields) {
+			const cmp = compareField(a, b, field);
+			if (cmp !== 0) return cmp;
+		}
+		return 0;
+	});
 }
 
 export function filter(
