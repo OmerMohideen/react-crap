@@ -106,12 +106,12 @@ export function formatHuman(
 		{ key: "crap", min: 5, max: 6, priority: 4 },
 		{ key: "delta", min: 5, max: 6, priority: 4 },
 		{ key: "cc", min: 3, max: 4, priority: 4 },
-		{ key: "coverage", min: 8, max: 14, priority: 3 }, // fits "100.0%"
+		{ key: "coverage", min: 6, max: 12, priority: 3 }, // compact; bar hidden on narrow
 		{ key: "type", min: 6, max: 6, priority: 3 }, // never shrink, fits Comp/Util
-		{ key: "hooks", min: 8, max: 14, priority: 2 }, // fits "useState"
+		{ key: "hooks", min: 12, max: 28, priority: 2 }, // fits "useImperativeHandle"
 		{ key: "rb", min: 3, max: 4, priority: 5 },
-		{ key: "function", min: 10, max: 50, priority: 1 },
-		{ key: "location", min: 8, max: 40, priority: 1 },
+		{ key: "function", min: 8, max: 22, priority: 1 },
+		{ key: "location", min: 8, max: 28, priority: 1 },
 	];
 
 	const desired: Record<string, number> = {};
@@ -256,12 +256,11 @@ export function formatHuman(
 		return `${s.slice(0, Math.max(0, len - 1))}…`;
 	}
 
-	const covW = widths.coverage ?? 14;
+	const covW = widths.coverage ?? 12;
 	const showCovBar = covW >= 14;
 	const covNumCompact = covW < 10;
-	const hooksW = widths.hooks ?? 14;
-	const funcW = Math.max(1, (widths.function ?? 50) - PAD);
-	const locW = Math.max(1, (widths.location ?? 40) - PAD);
+	const funcW = Math.max(1, (widths.function ?? 22) - PAD);
+	const locW = Math.max(1, (widths.location ?? 28) - PAD);
 
 	for (const e of entries) {
 		const status = getStatus(e, options.threshold, options.noColor);
@@ -276,7 +275,7 @@ export function formatHuman(
 		}
 		const covCell = showCovBar ? `${covBar} ${covText}` : covText;
 		const type = e.isComponent ? "Comp" : "Util";
-		const hooks = formatHooks(e.hooks, Math.max(1, hooksW - PAD));
+		const hooks = formatHooks(e.hooks);
 		const rb = e.renderBranches ? String(e.renderBranches) : "-";
 
 		const row: Record<string, string> = {
@@ -343,25 +342,9 @@ function colsSortedByShrinkable(
 	});
 }
 
-function formatHooks(hooks: string[], wrapWidth: number): string {
+function formatHooks(hooks: string[]): string {
 	if (!hooks.length) return "-";
-	const full = hooks.join(",");
-	if (full.length <= wrapWidth) return full;
-
-	// Word-wrap at comma boundaries so each line fits the column
-	const lines: string[] = [];
-	let current = "";
-	for (const h of hooks) {
-		const candidate = current ? `${current},${h}` : h;
-		if (candidate.length <= wrapWidth) {
-			current = candidate;
-		} else {
-			if (current) lines.push(current);
-			current = h;
-		}
-	}
-	if (current) lines.push(current);
-	return lines.join("\n");
+	return hooks.join(", ");
 }
 
 function getStatus(
