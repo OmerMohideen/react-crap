@@ -95,11 +95,17 @@ async function watchMode(
 	let watchedPaths = result.watchedPaths;
 	let lastMtimes = collectMtimes(watchedPaths);
 
+	let isFirstRun = true;
+
 	// Set up interval polling
 	const _interval = setInterval(async () => {
 		const current = collectMtimes(watchedPaths);
 		if (hasChanges(current, lastMtimes)) {
-			console.error("\n[watch] Files changed, re-running...\n");
+			if (!isFirstRun) {
+				console.clear();
+				console.error("[watch] Files changed, re-running...\n");
+			}
+			isFirstRun = false;
 			result = await runOnce(rawOptions, Promise.resolve(undefined));
 			watchedPaths = result.watchedPaths;
 			lastMtimes = collectMtimes(watchedPaths);
