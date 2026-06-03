@@ -92,9 +92,6 @@ export function formatHuman(
 	const numCols = isBaseline ? 10 : 9;
 	const borderChars = numCols + 1; // vertical │ dividers
 
-	// Effective content width = colWidth - 2 (cli-table3 padding)
-	const PAD = 2;
-
 	// Column configs: min/max total widths, shrink priority (higher = shrink first)
 	const colConfig: {
 		key: string;
@@ -106,12 +103,12 @@ export function formatHuman(
 		{ key: "crap", min: 5, max: 6, priority: 4 },
 		{ key: "delta", min: 5, max: 6, priority: 4 },
 		{ key: "cc", min: 3, max: 4, priority: 4 },
-		{ key: "coverage", min: 6, max: 12, priority: 3 }, // compact; bar hidden on narrow
+		{ key: "coverage", min: 6, max: 14, priority: 3 }, // fits bar + "100.0%"
 		{ key: "type", min: 6, max: 6, priority: 3 }, // never shrink, fits Comp/Util
-		{ key: "hooks", min: 12, max: 28, priority: 2 }, // fits "useImperativeHandle"
+		{ key: "hooks", min: 12, max: 24, priority: 2 },
 		{ key: "rb", min: 3, max: 4, priority: 5 },
-		{ key: "function", min: 8, max: 22, priority: 1 },
-		{ key: "location", min: 8, max: 28, priority: 1 },
+		{ key: "function", min: 8, max: 50, priority: 1 },
+		{ key: "location", min: 8, max: 50, priority: 1 },
 	];
 
 	const desired: Record<string, number> = {};
@@ -251,16 +248,9 @@ export function formatHuman(
 		return `${file}:${line}`;
 	}
 
-	function truncate(s: string, len: number): string {
-		if (s.length <= len) return s;
-		return `${s.slice(0, Math.max(0, len - 1))}…`;
-	}
-
-	const covW = widths.coverage ?? 12;
+	const covW = widths.coverage ?? 14;
 	const showCovBar = covW >= 14;
 	const covNumCompact = covW < 10;
-	const funcW = Math.max(1, (widths.function ?? 22) - PAD);
-	const locW = Math.max(1, (widths.location ?? 28) - PAD);
 
 	for (const e of entries) {
 		const status = getStatus(e, options.threshold, options.noColor);
@@ -286,8 +276,8 @@ export function formatHuman(
 			type,
 			hooks,
 			rb,
-			function: truncate(e.function, funcW),
-			location: truncate(fmtLoc(e.file, e.line), locW),
+			function: e.function,
+			location: fmtLoc(e.file, e.line),
 		};
 
 		if (isBaseline && "delta" in e) {
@@ -297,10 +287,7 @@ export function formatHuman(
 			const deltaColor = d.delta > 0 ? c.red : d.delta < 0 ? c.green : c.gray;
 			row.delta = deltaColor(deltaStr);
 			if (d.previous_file) {
-				row.location = truncate(
-					`${fmtLoc(e.file, e.line)} ← ${d.previous_file}`,
-					locW,
-				);
+				row.location = `${fmtLoc(e.file, e.line)} ← ${d.previous_file}`;
 			}
 		}
 
