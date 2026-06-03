@@ -95,20 +95,33 @@ async function watchMode(
 	let watchedPaths = result.watchedPaths;
 	let lastMtimes = collectMtimes(watchedPaths);
 
-	let isFirstRun = true;
+	let previousLineCount = 0;
 
 	// Set up interval polling
 	const _interval = setInterval(async () => {
 		const current = collectMtimes(watchedPaths);
 		if (hasChanges(current, lastMtimes)) {
-			if (!isFirstRun) {
-				console.clear();
+			if (previousLineCount > 0) {
+				// Move cursor up and clear exactly the previous output lines
+				process.stdout.write(`\x1b[${previousLineCount}A\x1b[J\x1b[0J`);
 				console.error("[watch] Files changed, re-running...\n");
 			}
-			isFirstRun = false;
+
+			// Capture line count by overriding console.log temporarily
+			const originalLog = console.log;
+			let lineCount = 0;
+			console.log = (...args: any[]) => {
+				const out = args.join(" ");
+				lineCount += out.split("\n").length;
+				originalLog.apply(console, args);
+			};
+
 			result = await runOnce(rawOptions, Promise.resolve(undefined));
 			watchedPaths = result.watchedPaths;
 			lastMtimes = collectMtimes(watchedPaths);
+
+			console.log = originalLog;
+			previousLineCount = lineCount;
 		}
 	}, 1000);
 
