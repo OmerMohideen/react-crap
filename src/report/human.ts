@@ -1,3 +1,4 @@
+import { relative } from "node:path";
 import Table from "cli-table3";
 import pc from "picocolors";
 import type { DeltaEntry } from "../delta.js";
@@ -9,6 +10,7 @@ export interface HumanOptions {
 	baseline?: boolean;
 	workspace?: boolean;
 	noColor?: boolean;
+	rootPath?: string;
 }
 
 export function formatHuman(
@@ -132,6 +134,14 @@ export function formatHuman(
 				],
 	});
 
+	function fmtLoc(file: string, line: number): string {
+		if (options.rootPath) {
+			const rel = relative(options.rootPath, file).replace(/\\/g, "/");
+			return `${rel}:${line}`;
+		}
+		return `${file}:${line}`;
+	}
+
 	for (const e of entries) {
 		const status = getStatus(e, options.threshold, options.noColor);
 		const covBar = coverageBar(e.coverage ?? 0);
@@ -147,8 +157,8 @@ export function formatHuman(
 				d.delta > 0 ? `+${d.delta.toFixed(1)}` : d.delta.toFixed(1);
 			const deltaColor = d.delta > 0 ? c.red : d.delta < 0 ? c.green : c.gray;
 			const location = d.previous_file
-				? `${e.file}:${e.line} ← ${d.previous_file}`
-				: `${e.file}:${e.line}`;
+				? `${fmtLoc(e.file, e.line)} ← ${d.previous_file}`
+				: fmtLoc(e.file, e.line);
 			table.push([
 				status,
 				e.crap.toFixed(1),
@@ -171,7 +181,7 @@ export function formatHuman(
 				hooks,
 				rb,
 				e.function,
-				`${e.file}:${e.line}`,
+				fmtLoc(e.file, e.line),
 			]);
 		}
 	}

@@ -454,6 +454,7 @@ async function runOnce(
 					summary: options.summary,
 					workspace: options.workspace,
 					noColor: options.noColor,
+					rootPath: resolve(options.path),
 				});
 				break;
 		}
