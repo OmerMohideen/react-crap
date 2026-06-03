@@ -82,74 +82,165 @@ export function formatHuman(
 		}
 	}
 
-	// Responsive column layout based on terminal width
+	// ── TUI-like responsive column widths ──
 	const termWidth =
 		typeof process !== "undefined" && process.stdout && process.stdout.columns
 			? process.stdout.columns
 			: 120;
 
-	// Determine which columns to show
-	const showType = termWidth >= 75;
-	const showRB = termWidth >= 85;
-	const showHooks = termWidth >= 100;
-	const hooksWrapWidth = showHooks
-		? Math.max(12, Math.min(28, termWidth - 90))
-		: 12;
+	const isBaseline = options.baseline;
+	const numCols = isBaseline ? 10 : 9;
+	const borderChars = numCols + 1; // vertical │ dividers
 
-	const head = options.baseline
+	// Effective content width = colWidth - 2 (cli-table3 padding)
+	const PAD = 2;
+
+	// Column configs: min/max total widths, shrink priority (higher = shrink first)
+	const colConfig: {
+		key: string;
+		min: number;
+		max: number;
+		priority: number;
+	}[] = [
+		{ key: "status", min: 3, max: 3, priority: 5 }, // never shrink, fits ✓✗▲!
+		{ key: "crap", min: 5, max: 6, priority: 4 },
+		{ key: "delta", min: 5, max: 6, priority: 4 },
+		{ key: "cc", min: 3, max: 4, priority: 4 },
+		{ key: "coverage", min: 8, max: 14, priority: 3 }, // fits "100.0%"
+		{ key: "type", min: 6, max: 6, priority: 3 }, // never shrink, fits Comp/Util
+		{ key: "hooks", min: 8, max: 14, priority: 2 }, // fits "useState"
+		{ key: "rb", min: 3, max: 4, priority: 5 },
+		{ key: "function", min: 10, max: 50, priority: 1 },
+		{ key: "location", min: 8, max: 40, priority: 1 },
+	];
+
+	const desired: Record<string, number> = {};
+	for (const cfg of colConfig) {
+		if (cfg.key === "delta" && !isBaseline) continue;
+		desired[cfg.key] = cfg.max;
+	}
+
+	let totalDesired = borderChars;
+	for (const k of Object.keys(desired)) totalDesired += desired[k];
+
+	const widths: Record<string, number> = { ...desired };
+	if (totalDesired > termWidth) {
+		const overflow = totalDesired - termWidth;
+		let remainingShrink = overflow;
+
+		for (let prio = 5; prio >= 1 && remainingShrink > 0; prio--) {
+			const colsAtPrio = colConfig.filter(
+				(c) => c.priority === prio && widths[c.key] !== undefined,
+			);
+			if (colsAtPrio.length === 0) continue;
+
+			const shrinkable = colsAtPrio.reduce(
+				(sum, c) => sum + (widths[c.key] - c.min),
+				0,
+			);
+			const take = Math.min(remainingShrink, shrinkable);
+			if (take <= 0) continue;
+
+			const ratio = take / shrinkable;
+			for (const c of colsAtPrio) {
+				const canShrink = widths[c.key] - c.min;
+				const amount = Math.floor(canShrink * ratio);
+				widths[c.key] -= amount;
+				remainingShrink -= amount;
+			}
+
+			if (remainingShrink > 0) {
+				for (const c of colsSortedByShrinkable(colsAtPrio, widths)) {
+					if (remainingShrink <= 0) break;
+					const canShrink = widths[c.key] - c.min;
+					if (canShrink > 0) {
+						const amount = Math.min(canShrink, remainingShrink);
+						widths[c.key] -= amount;
+						remainingShrink -= amount;
+					}
+				}
+			}
+		}
+	}
+
+	const colOrder = isBaseline
 		? [
-				"",
-				"CRAP",
-				"Δ",
-				"CC",
-				"Coverage",
-				...(showType ? ["Type"] : []),
-				...(showHooks ? ["Hooks"] : []),
-				...(showRB ? ["RB"] : []),
-				"Function",
-				"Location",
+				"status",
+				"crap",
+				"delta",
+				"cc",
+				"coverage",
+				"type",
+				"hooks",
+				"rb",
+				"function",
+				"location",
 			]
 		: [
-				"",
-				"CRAP",
-				"CC",
-				"Coverage",
-				...(showType ? ["Type"] : []),
-				...(showHooks ? ["Hooks"] : []),
-				...(showRB ? ["RB"] : []),
-				"Function",
-				"Location",
+				"status",
+				"crap",
+				"cc",
+				"coverage",
+				"type",
+				"hooks",
+				"rb",
+				"function",
+				"location",
 			];
 
-	const colAligns = options.baseline
-		? [
-				"center",
-				"right",
-				"right",
-				"right",
-				"left",
-				...(showType ? ["left"] : []),
-				...(showHooks ? ["left"] : []),
-				...(showRB ? ["right"] : []),
-				"left",
-				"left",
-			]
-		: [
-				"center",
-				"right",
-				"right",
-				"left",
-				...(showType ? ["left"] : []),
-				...(showHooks ? ["left"] : []),
-				...(showRB ? ["right"] : []),
-				"left",
-				"left",
-			];
+	const colWidths = colOrder
+		.filter((k) => widths[k] !== undefined)
+		.map((k) => widths[k]);
+
+	const head = colOrder
+		.filter((k) => widths[k] !== undefined)
+		.map((k) => {
+			switch (k) {
+				case "status":
+					return "";
+				case "crap":
+					return "CRAP";
+				case "delta":
+					return "Δ";
+				case "cc":
+					return "CC";
+				case "coverage":
+					return "Cov";
+				case "type":
+					return "Type";
+				case "hooks":
+					return "Hooks";
+				case "rb":
+					return "RB";
+				case "function":
+					return "Function";
+				case "location":
+					return "Location";
+				default:
+					return "";
+			}
+		});
+
+	const colAligns = colOrder
+		.filter((k) => widths[k] !== undefined)
+		.map((k) => {
+			if (
+				k === "status" ||
+				k === "rb" ||
+				k === "cc" ||
+				k === "crap" ||
+				k === "delta"
+			)
+				return "center";
+			return "left";
+		}) as Table.HorizontalAlignment[];
 
 	const table = new Table({
 		head,
+		colWidths,
+		colAligns,
 		style: { head: [], border: [] },
-		colAligns: colAligns as Table.HorizontalAlignment[],
+		wordWrap: true,
 	});
 
 	function fmtLoc(file: string, line: number): string {
@@ -160,48 +251,63 @@ export function formatHuman(
 		return `${file}:${line}`;
 	}
 
+	function truncate(s: string, len: number): string {
+		if (s.length <= len) return s;
+		return `${s.slice(0, Math.max(0, len - 1))}…`;
+	}
+
+	const covW = widths.coverage ?? 14;
+	const showCovBar = covW >= 14;
+	const covNumCompact = covW < 10;
+	const hooksW = widths.hooks ?? 14;
+	const funcW = Math.max(1, (widths.function ?? 50) - PAD);
+	const locW = Math.max(1, (widths.location ?? 40) - PAD);
+
 	for (const e of entries) {
 		const status = getStatus(e, options.threshold, options.noColor);
 		const covBar = coverageBar(e.coverage ?? 0);
-		const covText =
-			e.coverage === null ? "   N/A" : `${e.coverage.toFixed(1)}%`;
+		let covText: string;
+		if (e.coverage === null) {
+			covText = "N/A";
+		} else if (covNumCompact) {
+			covText = `${Math.round(e.coverage)}%`;
+		} else {
+			covText = `${e.coverage.toFixed(1)}%`;
+		}
+		const covCell = showCovBar ? `${covBar} ${covText}` : covText;
 		const type = e.isComponent ? "Comp" : "Util";
-		const hooks = formatHooks(e.hooks, hooksWrapWidth);
+		const hooks = formatHooks(e.hooks, Math.max(1, hooksW - PAD));
 		const rb = e.renderBranches ? String(e.renderBranches) : "-";
 
-		if (options.baseline && "delta" in e) {
+		const row: Record<string, string> = {
+			status,
+			crap: e.crap.toFixed(1),
+			cc: String(e.cyclomatic),
+			coverage: covCell,
+			type,
+			hooks,
+			rb,
+			function: truncate(e.function, funcW),
+			location: truncate(fmtLoc(e.file, e.line), locW),
+		};
+
+		if (isBaseline && "delta" in e) {
 			const d = e as unknown as DeltaEntry;
 			const deltaStr =
 				d.delta > 0 ? `+${d.delta.toFixed(1)}` : d.delta.toFixed(1);
 			const deltaColor = d.delta > 0 ? c.red : d.delta < 0 ? c.green : c.gray;
-			const location = d.previous_file
-				? `${fmtLoc(e.file, e.line)} ← ${d.previous_file}`
-				: fmtLoc(e.file, e.line);
-			table.push([
-				status,
-				e.crap.toFixed(1),
-				deltaColor(deltaStr),
-				String(e.cyclomatic),
-				`${covBar} ${covText}`,
-				...(showType ? [type] : []),
-				...(showHooks ? [hooks] : []),
-				...(showRB ? [rb] : []),
-				e.function,
-				location,
-			]);
-		} else {
-			table.push([
-				status,
-				e.crap.toFixed(1),
-				String(e.cyclomatic),
-				`${covBar} ${covText}`,
-				...(showType ? [type] : []),
-				...(showHooks ? [hooks] : []),
-				...(showRB ? [rb] : []),
-				e.function,
-				fmtLoc(e.file, e.line),
-			]);
+			row.delta = deltaColor(deltaStr);
+			if (d.previous_file) {
+				row.location = truncate(
+					`${fmtLoc(e.file, e.line)} ← ${d.previous_file}`,
+					locW,
+				);
+			}
 		}
+
+		table.push(
+			colOrder.filter((k) => widths[k] !== undefined).map((k) => row[k]),
+		);
 	}
 
 	lines.push(table.toString() as string);
@@ -226,12 +332,23 @@ export function formatHuman(
 	return lines.join("\n");
 }
 
+function colsSortedByShrinkable(
+	cols: { key: string; min: number }[],
+	widths: Record<string, number>,
+): { key: string; min: number }[] {
+	return [...cols].sort((a, b) => {
+		const aShrink = widths[a.key] - a.min;
+		const bShrink = widths[b.key] - b.min;
+		return bShrink - aShrink;
+	});
+}
+
 function formatHooks(hooks: string[], wrapWidth: number): string {
 	if (!hooks.length) return "-";
 	const full = hooks.join(",");
 	if (full.length <= wrapWidth) return full;
 
-	// Word-wrap at comma boundaries so the column stays narrow but shows everything
+	// Word-wrap at comma boundaries so each line fits the column
 	const lines: string[] = [];
 	let current = "";
 	for (const h of hooks) {
