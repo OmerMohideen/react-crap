@@ -198,17 +198,27 @@ export function formatHuman(
 	return lines.join("\n");
 }
 
+const HOOKS_WRAP_WIDTH = 28;
+
 function formatHooks(hooks: string[]): string {
 	if (!hooks.length) return "-";
 	const full = hooks.join(",");
-	if (full.length <= 30) return full;
-	for (let i = hooks.length - 1; i >= 0; i--) {
-		const partial = hooks.slice(0, i).join(",");
-		if (partial.length <= 27) {
-			return `${partial}...`;
+	if (full.length <= HOOKS_WRAP_WIDTH) return full;
+
+	// Word-wrap at comma boundaries so the column stays narrow but shows everything
+	const lines: string[] = [];
+	let current = "";
+	for (const h of hooks) {
+		const candidate = current ? `${current},${h}` : h;
+		if (candidate.length <= HOOKS_WRAP_WIDTH) {
+			current = candidate;
+		} else {
+			if (current) lines.push(current);
+			current = h;
 		}
 	}
-	return `${hooks[0].slice(0, 27)}...`;
+	if (current) lines.push(current);
+	return lines.join("\n");
 }
 
 function getStatus(
