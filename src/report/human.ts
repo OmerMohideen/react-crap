@@ -82,56 +82,74 @@ export function formatHuman(
 		}
 	}
 
+	// Responsive column layout based on terminal width
+	const termWidth =
+		typeof process !== "undefined" && process.stdout && process.stdout.columns
+			? process.stdout.columns
+			: 120;
+
+	// Determine which columns to show
+	const showType = termWidth >= 75;
+	const showRB = termWidth >= 85;
+	const showHooks = termWidth >= 100;
+	const hooksWrapWidth = showHooks
+		? Math.max(12, Math.min(28, termWidth - 90))
+		: 12;
+
+	const head = options.baseline
+		? [
+				"",
+				"CRAP",
+				"Δ",
+				"CC",
+				"Coverage",
+				...(showType ? ["Type"] : []),
+				...(showHooks ? ["Hooks"] : []),
+				...(showRB ? ["RB"] : []),
+				"Function",
+				"Location",
+			]
+		: [
+				"",
+				"CRAP",
+				"CC",
+				"Coverage",
+				...(showType ? ["Type"] : []),
+				...(showHooks ? ["Hooks"] : []),
+				...(showRB ? ["RB"] : []),
+				"Function",
+				"Location",
+			];
+
+	const colAligns = options.baseline
+		? [
+				"center",
+				"right",
+				"right",
+				"right",
+				"left",
+				...(showType ? ["left"] : []),
+				...(showHooks ? ["left"] : []),
+				...(showRB ? ["right"] : []),
+				"left",
+				"left",
+			]
+		: [
+				"center",
+				"right",
+				"right",
+				"left",
+				...(showType ? ["left"] : []),
+				...(showHooks ? ["left"] : []),
+				...(showRB ? ["right"] : []),
+				"left",
+				"left",
+			];
+
 	const table = new Table({
-		head: options.baseline
-			? [
-					"",
-					"CRAP",
-					"Δ",
-					"CC",
-					"Coverage",
-					"Type",
-					"Hooks",
-					"RB",
-					"Function",
-					"Location",
-				]
-			: [
-					"",
-					"CRAP",
-					"CC",
-					"Coverage",
-					"Type",
-					"Hooks",
-					"RB",
-					"Function",
-					"Location",
-				],
+		head,
 		style: { head: [], border: [] },
-		colAligns: options.baseline
-			? [
-					"center",
-					"right",
-					"right",
-					"right",
-					"left",
-					"left",
-					"left",
-					"right",
-					"left",
-					"left",
-				]
-			: [
-					"center",
-					"right",
-					"right",
-					"left",
-					"left",
-					"left",
-					"right",
-					"left",
-					"left",
-				],
+		colAligns: colAligns as Table.HorizontalAlignment[],
 	});
 
 	function fmtLoc(file: string, line: number): string {
@@ -148,7 +166,7 @@ export function formatHuman(
 		const covText =
 			e.coverage === null ? "   N/A" : `${e.coverage.toFixed(1)}%`;
 		const type = e.isComponent ? "Comp" : "Util";
-		const hooks = formatHooks(e.hooks);
+		const hooks = formatHooks(e.hooks, hooksWrapWidth);
 		const rb = e.renderBranches ? String(e.renderBranches) : "-";
 
 		if (options.baseline && "delta" in e) {
@@ -165,9 +183,9 @@ export function formatHuman(
 				deltaColor(deltaStr),
 				String(e.cyclomatic),
 				`${covBar} ${covText}`,
-				type,
-				hooks,
-				rb,
+				...(showType ? [type] : []),
+				...(showHooks ? [hooks] : []),
+				...(showRB ? [rb] : []),
 				e.function,
 				location,
 			]);
@@ -177,9 +195,9 @@ export function formatHuman(
 				e.crap.toFixed(1),
 				String(e.cyclomatic),
 				`${covBar} ${covText}`,
-				type,
-				hooks,
-				rb,
+				...(showType ? [type] : []),
+				...(showHooks ? [hooks] : []),
+				...(showRB ? [rb] : []),
 				e.function,
 				fmtLoc(e.file, e.line),
 			]);
@@ -208,19 +226,17 @@ export function formatHuman(
 	return lines.join("\n");
 }
 
-const HOOKS_WRAP_WIDTH = 28;
-
-function formatHooks(hooks: string[]): string {
+function formatHooks(hooks: string[], wrapWidth: number): string {
 	if (!hooks.length) return "-";
 	const full = hooks.join(",");
-	if (full.length <= HOOKS_WRAP_WIDTH) return full;
+	if (full.length <= wrapWidth) return full;
 
 	// Word-wrap at comma boundaries so the column stays narrow but shows everything
 	const lines: string[] = [];
 	let current = "";
 	for (const h of hooks) {
 		const candidate = current ? `${current},${h}` : h;
-		if (candidate.length <= HOOKS_WRAP_WIDTH) {
+		if (candidate.length <= wrapWidth) {
 			current = candidate;
 		} else {
 			if (current) lines.push(current);
