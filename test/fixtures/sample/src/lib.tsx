@@ -41,3 +41,31 @@ export function ignoredFunc(x: number): string {
 	if (x < 0) return "b";
 	return "c";
 }
+
+export function useCounter(initial: number): [number, () => void] {
+	const [count, setCount] = React.useState(initial);
+	const increment = () => setCount((c) => c + 1);
+	return [count, increment];
+}
+
+export function BrokenHook() {
+	const [x, _setX] = useState(0);
+	if (x > 0) {
+		useEffect(() => {}, []); // violation
+	}
+	return <div>{x}</div>;
+}
+
+export function ValidComponent({ items }: { items: string[] }) {
+	return (
+		<div>
+			{items.length > 0 && (
+				<ul>
+					{items.map((i) => (
+						<li key={i}>{i}</li>
+					))}
+				</ul>
+			)}
+		</div>
+	);
+}

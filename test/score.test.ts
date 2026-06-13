@@ -172,6 +172,37 @@ describe("sortEntries", () => {
 		expect(result[0].function).toBe("a");
 		expect(result[1].function).toBe("b");
 	});
+
+	it("sorts by hooks count", () => {
+		const entries = [
+			{
+				file: "a.ts",
+				function: "a",
+				line: 1,
+				cyclomatic: 1,
+				coverage: 100,
+				crap: 1,
+				hooks: ["useState"],
+				hookViolations: [],
+				isComponent: false,
+				renderBranches: 0,
+			},
+			{
+				file: "a.ts",
+				function: "b",
+				line: 1,
+				cyclomatic: 1,
+				coverage: 100,
+				crap: 1,
+				hooks: ["useState", "useEffect"],
+				hookViolations: [],
+				isComponent: false,
+				renderBranches: 0,
+			},
+		];
+		const result = sortEntries(entries, "hooks");
+		expect(result[0].function).toBe("b");
+	});
 });
 
 describe("filter", () => {
@@ -312,5 +343,40 @@ describe("filter", () => {
 		expect(result).toHaveLength(2);
 		expect(result[0].crap).toBe(50);
 		expect(result[1].crap).toBe(20);
+	});
+
+	it("uses componentThreshold for components", () => {
+		const entries = [
+			{
+				file: "a.tsx",
+				function: "Btn",
+				line: 1,
+				cyclomatic: 5,
+				coverage: 0,
+				crap: 30,
+				isComponent: true,
+				hooks: [],
+				hookViolations: [],
+				renderBranches: 0,
+			},
+			{
+				file: "a.ts",
+				function: "fmt",
+				line: 1,
+				cyclomatic: 5,
+				coverage: 0,
+				crap: 30,
+				isComponent: false,
+				hooks: [],
+				hookViolations: [],
+				renderBranches: 0,
+			},
+		];
+		const result = filter(entries, {
+			onlyFailures: true,
+			threshold: 20,
+			componentThreshold: 40,
+		});
+		expect(result.map((e) => e.function)).toEqual(["fmt"]);
 	});
 });

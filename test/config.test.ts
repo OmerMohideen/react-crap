@@ -22,4 +22,16 @@ describe("loadConfig", () => {
 		expect(() => loadConfig(dir)).toThrow(/Allowed keys:/);
 		rmSync(dir, { recursive: true });
 	});
+
+	it("accepts componentThreshold as a valid key", () => {
+		const dir = mkdtempSync(join(tmpdir(), "react-crap-"));
+		writeFileSync(
+			join(dir, ".react-crap.json"),
+			JSON.stringify({ componentThreshold: 40 }),
+		);
+		expect(() => loadConfig(dir)).not.toThrow();
+		const config = loadConfig(dir);
+		expect(config.componentThreshold).toBe(40);
+		rmSync(dir, { recursive: true });
+	});
 });

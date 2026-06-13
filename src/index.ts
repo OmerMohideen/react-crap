@@ -25,6 +25,7 @@ export interface RunOptions {
 	lcov?: string;
 	path: string;
 	threshold: number;
+	componentThreshold?: number;
 	min?: number;
 	max?: number;
 	top?: number;
@@ -94,14 +95,33 @@ async function watchMode(
 	let watchedPaths = result.watchedPaths;
 	let lastMtimes = collectMtimes(watchedPaths);
 
+	let previousLineCount = 0;
+
 	// Set up interval polling
 	const _interval = setInterval(async () => {
 		const current = collectMtimes(watchedPaths);
 		if (hasChanges(current, lastMtimes)) {
-			console.error("\n[watch] Files changed, re-running...\n");
+			if (previousLineCount > 0) {
+				// Move cursor up and clear exactly the previous output lines
+				process.stdout.write(`\x1b[${previousLineCount}A\x1b[J\x1b[0J`);
+				console.error("[watch] Files changed, re-running...\n");
+			}
+
+			// Capture line count by overriding console.log temporarily
+			const originalLog = console.log;
+			let lineCount = 0;
+			console.log = (...args: any[]) => {
+				const out = args.join(" ");
+				lineCount += out.split("\n").length;
+				originalLog.apply(console, args);
+			};
+
 			result = await runOnce(rawOptions, Promise.resolve(undefined));
 			watchedPaths = result.watchedPaths;
 			lastMtimes = collectMtimes(watchedPaths);
+
+			console.log = originalLog;
+			previousLineCount = lineCount;
 		}
 	}, 1000);
 
@@ -123,6 +143,8 @@ async function runOnce(
 		lcov: rawOptions.lcov ?? "coverage/lcov.info",
 		path: rawOptions.path,
 		threshold: rawOptions.threshold ?? config.threshold ?? 30,
+		componentThreshold:
+			rawOptions.componentThreshold ?? config.componentThreshold,
 		min: rawOptions.min ?? config.min,
 		max: rawOptions.max ?? config.max,
 		top: rawOptions.top ?? config.top,
@@ -333,6 +355,7 @@ async function runOnce(
 		top: options.top,
 		onlyFailures: options.onlyFailures,
 		threshold: options.threshold,
+		componentThreshold: options.componentThreshold,
 	});
 	log(`After filters: ${filtered.length} function(s)`);
 
@@ -431,6 +454,7 @@ async function runOnce(
 					summary: options.summary,
 					workspace: options.workspace,
 					noColor: options.noColor,
+					rootPath: resolve(options.path),
 				});
 				break;
 		}

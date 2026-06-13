@@ -1,5 +1,5 @@
-import type { DeltaResult } from "../delta";
-import type { ScoredEntry } from "../score";
+import type { DeltaResult } from "../delta.js";
+import type { ScoredEntry } from "../score.js";
 
 export function formatJson(entries: ScoredEntry[], version: string): string {
 	return JSON.stringify(

@@ -1,16 +1,23 @@
-import type { ScoredEntry } from "../score";
+import type { ScoredEntry } from "../score.js";
 
 export function formatHtml(entries: ScoredEntry[], threshold: number): string {
 	const rows = entries
 		.map((e) => {
 			const t = e.threshold ?? threshold;
+			const hasViolations = e.hookViolations?.length > 0;
 			const status = e.crap > t ? "fail" : e.crap > t / 2 ? "warn" : "pass";
 			const cov = e.coverage === null ? "N/A" : `${e.coverage.toFixed(1)}%`;
-			return `<tr class="${status}">
-		<td class="status">${status === "fail" ? "✗" : status === "warn" ? "▲" : "✓"}</td>
+			const type = e.isComponent ? "Comp" : "Util";
+			const hooks = e.hooks?.length ? e.hooks.join(",") : "-";
+			const rb = e.renderBranches ? String(e.renderBranches) : "-";
+			return `<tr class="${status}${hasViolations ? " violation" : ""}">
+		<td class="status">${hasViolations ? "!" : status === "fail" ? "✗" : status === "warn" ? "▲" : "✓"}</td>
 		<td class="crap">${e.crap.toFixed(1)}</td>
 		<td class="cc">${e.cyclomatic}</td>
 		<td class="coverage">${cov}</td>
+		<td class="type">${type}</td>
+		<td class="hooks">${escapeHtml(hooks)}</td>
+		<td class="rb">${rb}</td>
 		<td class="function"><code>${escapeHtml(e.function)}</code></td>
 		<td class="location">${escapeHtml(e.file)}:${e.line}</td>
 	</tr>`;
@@ -34,6 +41,8 @@ export function formatHtml(entries: ScoredEntry[], threshold: number): string {
 	tr.fail .status { color: #d73a49; }
 	tr.warn .status { color: #e36209; }
 	tr.pass .status { color: #28a745; }
+	tr.violation { background: #fff5f5; }
+	tr.violation td.status { color: #d73a49; }
 	.function code { background: #f1f3f5; padding: 0.15rem 0.4rem; border-radius: 3px; font-size: 0.9em; }
 	.location { font-size: 0.85em; color: #586069; }
 	.summary { margin: 1rem 0; padding: 1rem; background: #fff; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
@@ -45,6 +54,7 @@ export function formatHtml(entries: ScoredEntry[], threshold: number): string {
 	<p>Threshold: ${threshold}</p>
 	<p>Total functions: ${entries.length}</p>
 	<p>Above threshold: ${entries.filter((e) => e.crap > (e.threshold ?? threshold)).length}</p>
+	<p>Hook violations: ${entries.filter((e) => e.hookViolations?.length > 0).length}</p>
 </div>
 <table>
 <thead>
@@ -53,6 +63,9 @@ export function formatHtml(entries: ScoredEntry[], threshold: number): string {
 <th>CRAP</th>
 <th>CC</th>
 <th>Coverage</th>
+<th>Type</th>
+<th>Hooks</th>
+<th>RB</th>
 <th>Function</th>
 <th>Location</th>
 </tr>
