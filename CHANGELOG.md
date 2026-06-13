@@ -1,3 +1,10 @@
+# [1.5.0](https://github.com/OmerMohideen/react-crap/compare/v1.4.0...v1.5.0) (2026-06-13)
+
+
+### Features
+
+* add react-aware metadata and enhance reporting features ([#5](https://github.com/OmerMohideen/react-crap/issues/5)) ([ee40385](https://github.com/OmerMohideen/react-crap/commit/ee40385b0afaa466c7c5c45419f188cadceedf87))
+
 # [1.4.0](https://github.com/OmerMohideen/react-crap/compare/v1.3.1...v1.4.0) (2026-06-02)
 
 
