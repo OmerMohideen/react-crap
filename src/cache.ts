@@ -14,7 +14,7 @@ export interface Cache {
 }
 
 const CACHE_FILE = ".react-crap-cache.json";
-const CACHE_VERSION = "5";
+const CACHE_VERSION = "7";
 
 export function loadCache(projectPath: string): Cache {
 	const path = resolve(projectPath, CACHE_FILE);

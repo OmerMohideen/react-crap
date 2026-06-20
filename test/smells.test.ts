@@ -54,3 +54,31 @@ describe("detectSmells", () => {
 		expect(doThing?.smells).toEqual([]);
 	});
 });
+
+describe("passthrough + test-no-assert", () => {
+	it("flags a component that only spreads props", async () => {
+		const f = resolve("test/fixtures/smells/extra.tsx");
+		const result = await analyzeComplexity([f]);
+		const w = result.find((r) => r.function === "Wrapper");
+		expect(new Set((w?.smells ?? []).map((s) => s.kind))).toContain(
+			"passthrough-wrapper",
+		);
+	});
+
+	it("flags an it() with no expect, but not one with expect", async () => {
+		const f = resolve("test/fixtures/smells/faketests.test.tsx");
+		const result = await analyzeComplexity([f]);
+		const noAssert = result.filter((r) =>
+			r.smells.some((s) => s.kind === "test-no-assert"),
+		);
+		expect(noAssert).toHaveLength(1);
+	});
+
+	it("test-no-assert does not fire in non-test files", async () => {
+		const result = await analyzeComplexity([fixture]);
+		const any = result.some((r) =>
+			r.smells.some((s) => s.kind === "test-no-assert"),
+		);
+		expect(any).toBe(false);
+	});
+});

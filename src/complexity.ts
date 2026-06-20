@@ -13,12 +13,24 @@ export type SmellKind =
 	| "console"
 	| "todo"
 	| "placeholder"
-	| "index-as-key";
+	| "index-as-key"
+	| "passthrough-wrapper"
+	| "test-no-assert";
 
 export interface Smell {
 	kind: SmellKind;
 	detail: string;
 	line: number;
+}
+
+// Parse .ts as TS (not TSX) so generic arrows `const f = <T>(x) =>` aren't
+// misread as JSX. Only .tsx/.jsx get the JSX grammar.
+export function scriptKind(file: string, tsMod: any): any {
+	if (file.endsWith(".tsx")) return tsMod.ScriptKind.TSX;
+	if (file.endsWith(".jsx")) return tsMod.ScriptKind.JSX;
+	if (file.endsWith(".js") || file.endsWith(".mjs") || file.endsWith(".cjs"))
+		return tsMod.ScriptKind.JS;
+	return tsMod.ScriptKind.TS;
 }
 
 export interface ComplexityEntry {
@@ -29,6 +41,7 @@ export interface ComplexityEntry {
 	cyclomatic: number;
 	bodyHash: string;
 	structuralHash: string;
+	normalizedHash: string;
 	threshold?: number;
 	hooks: string[];
 	hookViolations: string[];
@@ -78,7 +91,7 @@ async function analyzeFile(
 		content,
 		tsMod.ScriptTarget.ES2022,
 		true, // setParentNodes
-		tsMod.ScriptKind.TSX,
+		scriptKind(file, tsMod),
 	);
 
 	if (onProgress && current && total) {
@@ -115,6 +128,10 @@ async function analyzeFile(
 				.update(structuralFingerprint(node, tsMod))
 				.digest("hex")
 				.slice(0, 16);
+			const normalizedHash = createHash("sha256")
+				.update(structuralFingerprint(node, tsMod, true))
+				.digest("hex")
+				.slice(0, 16);
 			const threshold = getThreshold(node, sourceFile, tsMod);
 			const hooks: string[] = [];
 			const hookViolations: string[] = [];
@@ -131,6 +148,7 @@ async function analyzeFile(
 				cyclomatic: cc,
 				bodyHash,
 				structuralHash,
+				normalizedHash,
 				threshold,
 				hooks,
 				hookViolations,
@@ -384,6 +402,20 @@ async function analyzeFile(
 			return undefined;
 		};
 
+		// Leftmost identifier of a call/member chain: it.only -> "it",
+		// expect(x).toBe -> "expect".
+		const baseCalleeName = (expr: any): string | undefined => {
+			let e = expr;
+			while (e) {
+				if (tsMod.isIdentifier(e)) return e.text;
+				if (tsMod.isPropertyAccessExpression(e)) e = e.expression;
+				else if (tsMod.isCallExpression(e)) e = e.expression;
+				else if (tsMod.isParenthesizedExpression(e)) e = e.expression;
+				else return undefined;
+			}
+			return undefined;
+		};
+
 		// If this function is the callback of a .map()/.forEach(), its 2nd param
 		// is the loop index — flag `key={index}` uses below.
 		let indexParam: string | undefined;
@@ -396,6 +428,67 @@ async function analyzeFile(
 			tsMod.isIdentifier(fnNode.parameters[1].name)
 		) {
 			indexParam = fnNode.parameters[1].name.text;
+		}
+
+		// Passthrough wrapper: a component whose whole body is `return <X {...p} />`
+		// — AI over-abstraction that adds a layer doing nothing.
+		(function checkPassthrough() {
+			const body = fnNode.body;
+			if (!body) return;
+			let ret: any;
+			if (tsMod.isBlock(body)) {
+				if (
+					body.statements.length === 1 &&
+					tsMod.isReturnStatement(body.statements[0])
+				) {
+					ret = body.statements[0].expression;
+				}
+			} else {
+				ret = body; // concise arrow
+			}
+			while (ret && tsMod.isParenthesizedExpression(ret)) ret = ret.expression;
+			if (!ret) return;
+			let attrs: any;
+			if (tsMod.isJsxSelfClosingElement(ret))
+				attrs = ret.attributes?.properties;
+			else if (tsMod.isJsxElement(ret))
+				attrs = ret.openingElement?.attributes?.properties;
+			if (!attrs) return;
+			if (attrs.some((a: any) => tsMod.isJsxSpreadAttribute(a))) {
+				smells.push({
+					kind: "passthrough-wrapper",
+					detail:
+						"component only spreads props into one element (no value added)",
+					line: lineOf(fnNode),
+				});
+			}
+		})();
+
+		// Assertion-less test: an it()/test() callback with no expect()/assert().
+		if (
+			/\.(test|spec)\.[jt]sx?$/.test(sourceFile.fileName) &&
+			parent &&
+			tsMod.isCallExpression(parent) &&
+			/^(it|test)$/.test(baseCalleeName(parent.expression) ?? "")
+		) {
+			let asserts = false;
+			(function scan(n: any) {
+				if (asserts) return;
+				if (tsMod.isCallExpression(n)) {
+					const nm = calleeName(n.expression) ?? "";
+					const root = baseCalleeName(n.expression) ?? "";
+					if (root === "expect" || /^assert/i.test(nm) || /^assert/i.test(root))
+						asserts = true;
+				}
+				tsMod.forEachChild(n, scan);
+			})(fnNode);
+			if (!asserts) {
+				smells.push({
+					kind: "test-no-assert",
+					detail: "test has no expect()/assert() — asserts nothing",
+					line: lineOf(fnNode),
+				});
+			}
 		}
 
 		function analyzeEffect(call: any) {
@@ -584,7 +677,15 @@ async function analyzeFile(
 	// functions that differ by the identifier or literal that matters (e.g.
 	// `=== BucketHashes.Helmet` vs `.Arms`) do NOT. Keeping names is what stops
 	// the Type-2 false positives that pure normalization produces.
-	function structuralFingerprint(root: any, tsMod: any): string {
+	// normalize=false (default): keep identifier names + literal values — matches
+	//   reformatted copy-paste only (Type-1 modulo formatting).
+	// normalize=true: collapse every identifier/literal to a placeholder — matches
+	//   renamed/retyped near-duplicates too (Type-2). Noisier; opt-in.
+	function structuralFingerprint(
+		root: any,
+		tsMod: any,
+		normalize = false,
+	): string {
 		const out: string[] = [];
 		// Ignore the function's own name so identically-bodied copies under
 		// different names still match (the body is what makes it a clone).
@@ -601,7 +702,7 @@ async function analyzeFile(
 				tsMod.isIdentifier(node) ||
 				(tsMod.isPrivateIdentifier?.(node) ?? false)
 			) {
-				out.push(`I:${node.text}`);
+				out.push(normalize ? "I" : `I:${node.text}`);
 			} else if (
 				tsMod.isStringLiteral(node) ||
 				tsMod.isNumericLiteral(node) ||
@@ -609,11 +710,11 @@ async function analyzeFile(
 				(tsMod.isRegularExpressionLiteral?.(node) ?? false) ||
 				node.kind === tsMod.SyntaxKind.BigIntLiteral
 			) {
-				out.push(`L:${node.text}`);
+				out.push(normalize ? "L" : `L:${node.text}`);
 			} else if (tsMod.isJsxText?.(node) ?? false) {
 				// JSX text: keep meaningful content, ignore surrounding whitespace.
 				const t = String(node.text ?? "").trim();
-				if (t) out.push(`T:${t}`);
+				if (t) out.push(normalize ? "T" : `T:${t}`);
 			} else {
 				out.push(`#${node.kind}`);
 			}

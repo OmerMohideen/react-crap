@@ -40,6 +40,8 @@ function allKindsExcept(exclude: SmellKind[]): SmellKind[] {
 		"todo",
 		"placeholder",
 		"index-as-key",
+		"passthrough-wrapper",
+		"test-no-assert",
 	];
 	const ex = new Set(exclude);
 	return all.filter((k) => !ex.has(k));

@@ -26,10 +26,15 @@ export interface DuplicateGroup {
 // tree-edit-distance pass behind a flag if near-duplicates are needed.
 export function findDuplicates(
 	complexity: ComplexityEntry[],
-	opts: { minLines?: number; minCyclomatic?: number } = {},
+	opts: {
+		minLines?: number;
+		minCyclomatic?: number;
+		normalized?: boolean;
+	} = {},
 ): DuplicateGroup[] {
 	const minLines = opts.minLines ?? 3;
-	const minCyclomatic = opts.minCyclomatic ?? 2;
+	// Normalized (Type-2) matching is noisier — require a bit more substance.
+	const minCyclomatic = opts.minCyclomatic ?? (opts.normalized ? 3 : 2);
 
 	const byHash = new Map<string, ComplexityEntry[]>();
 	for (const e of complexity) {
@@ -37,9 +42,10 @@ export function findDuplicates(
 		// structurally all the time and aren't worth reporting.
 		if (e.endLine - e.line + 1 < minLines) continue;
 		if (e.cyclomatic < minCyclomatic) continue;
-		const list = byHash.get(e.structuralHash) ?? [];
+		const key = opts.normalized ? e.normalizedHash : e.structuralHash;
+		const list = byHash.get(key) ?? [];
 		list.push(e);
-		byHash.set(e.structuralHash, list);
+		byHash.set(key, list);
 	}
 
 	const groups: DuplicateGroup[] = [];

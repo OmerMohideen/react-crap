@@ -6,6 +6,11 @@ import { hashFile, loadCache, saveCache } from "./cache.js";
 import { analyzeComplexity } from "./complexity.js";
 import { loadConfig } from "./config.js";
 import { parseLcov } from "./coverage.js";
+import {
+	findDeadImports,
+	formatDeadCodeHuman,
+	formatDeadCodeJson,
+} from "./deadcode.js";
 import { computeDelta, loadBaseline } from "./delta.js";
 import {
 	findDuplicates,
@@ -59,8 +64,10 @@ export interface RunOptions {
 	noColor?: boolean;
 	sort?: string;
 	duplicates?: boolean;
+	duplicateMode?: string;
 	smells?: boolean;
 	smellKinds?: string;
+	deadCode?: boolean;
 }
 
 export async function run(rawOptions: RunOptions): Promise<void> {
@@ -185,15 +192,22 @@ async function runOnce(
 		noColor: rawOptions.noColor || false,
 		sort: rawOptions.sort ?? config.sort ?? "crap",
 		duplicates: rawOptions.duplicates ?? false,
+		duplicateMode: rawOptions.duplicateMode,
 		smells: rawOptions.smells ?? false,
 		smellKinds: rawOptions.smellKinds,
+		deadCode: rawOptions.deadCode ?? false,
 	};
 
 	const log = (message: string) => {
 		if (options.verbose) console.error(`[react-crap] ${message}`);
 	};
 
-	if (!options.lcov && !options.duplicates && !options.smells) {
+	if (
+		!options.lcov &&
+		!options.duplicates &&
+		!options.smells &&
+		!options.deadCode
+	) {
 		throw new Error(
 			"--lcov is required. Generate an LCOV report first (e.g. `npx vitest run --coverage` or `npx jest --coverage`).",
 		);
@@ -251,6 +265,33 @@ async function runOnce(
 		);
 	}
 	log(`Found ${allFiles.length} source file(s)`);
+
+	// Dead-code (unused imports) needs only the file list — short-circuit here,
+	// before coverage and complexity analysis.
+	if (options.deadCode) {
+		const tsPath = resolveTsPath(resolve(options.path));
+		const dead = await findDeadImports(
+			allFiles.map((f) => f.path),
+			tsPath,
+		);
+		log(`Found ${dead.length} unused import(s)`);
+		const version = getLocalVersion();
+		const output =
+			options.format === "json"
+				? formatDeadCodeJson(dead, version)
+				: formatDeadCodeHuman(dead, {
+						rootPath: resolve(options.path),
+						noColor: options.noColor,
+					});
+		if (options.output) {
+			writeFileSync(resolve(options.output), `${output}\n`, "utf-8");
+		} else {
+			console.log(output);
+		}
+		const updateMessage = await updatePromise;
+		if (updateMessage) console.error(`\n${updateMessage}\n`);
+		return { watchedPaths, exitCode: 0 };
+	}
 
 	// Parse coverage (skipped in --duplicates/--smells modes, which need none)
 	let coverageData: ReturnType<typeof parseLcov> = [];
@@ -324,7 +365,8 @@ async function runOnce(
 	// Duplicate detection: group functions by body hash, report clones. Runs
 	// independently of coverage/scoring, so short-circuit here.
 	if (options.duplicates) {
-		const groups = findDuplicates(complexity);
+		const normalized = options.duplicateMode === "normalized";
+		const groups = findDuplicates(complexity, { normalized });
 		log(`Found ${groups.length} duplicate group(s)`);
 		const version = getLocalVersion();
 		const output =

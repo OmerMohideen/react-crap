@@ -13,6 +13,7 @@ function entry(part: Partial<ComplexityEntry>): ComplexityEntry {
 		cyclomatic: 2,
 		bodyHash: "h",
 		structuralHash: "s",
+		normalizedHash: "n",
 		hooks: [],
 		hookViolations: [],
 		isComponent: false,
@@ -80,5 +81,24 @@ describe("structural detection (formatting-insensitive)", () => {
 		const a = result.find((r) => r.function === "UserCard");
 		const panel = result.find((r) => r.function === "PanelCard");
 		expect(a?.structuralHash).not.toBe(panel?.structuralHash);
+	});
+});
+
+describe("normalized (Type-2) detection", () => {
+	const fixture = resolve("test/fixtures/duplicates/type2.ts");
+
+	it("normalized mode matches renamed/retyped near-duplicates", async () => {
+		const result = await analyzeComplexity([fixture]);
+		const a = result.find((r) => r.function === "sumPrices");
+		const b = result.find((r) => r.function === "tallyScores");
+		// Different identifiers + literals → structural differs, normalized matches.
+		expect(a?.structuralHash).not.toBe(b?.structuralHash);
+		expect(a?.normalizedHash).toBe(b?.normalizedHash);
+	});
+
+	it("findDuplicates groups them only in normalized mode", async () => {
+		const result = await analyzeComplexity([fixture]);
+		expect(findDuplicates(result)).toHaveLength(0);
+		expect(findDuplicates(result, { normalized: true })).toHaveLength(1);
 	});
 });
