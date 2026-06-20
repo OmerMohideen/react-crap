@@ -7,6 +7,11 @@ import { analyzeComplexity } from "./complexity.js";
 import { loadConfig } from "./config.js";
 import { parseLcov } from "./coverage.js";
 import { computeDelta, loadBaseline } from "./delta.js";
+import {
+	findDuplicates,
+	formatDuplicatesHuman,
+	formatDuplicatesJson,
+} from "./duplicates.js";
 import { getChangedFiles } from "./git.js";
 import { getChangedLineRanges } from "./git-diff.js";
 import { merge } from "./merge.js";
@@ -47,6 +52,7 @@ export interface RunOptions {
 	changed?: boolean;
 	noColor?: boolean;
 	sort?: string;
+	duplicates?: boolean;
 }
 
 export async function run(rawOptions: RunOptions): Promise<void> {
@@ -170,13 +176,14 @@ async function runOnce(
 		changed: rawOptions.changed ?? false,
 		noColor: rawOptions.noColor || false,
 		sort: rawOptions.sort ?? config.sort ?? "crap",
+		duplicates: rawOptions.duplicates ?? false,
 	};
 
 	const log = (message: string) => {
 		if (options.verbose) console.error(`[react-crap] ${message}`);
 	};
 
-	if (!options.lcov) {
+	if (!options.lcov && !options.duplicates) {
 		throw new Error(
 			"--lcov is required. Generate an LCOV report first (e.g. `npx vitest run --coverage` or `npx jest --coverage`).",
 		);
@@ -235,22 +242,25 @@ async function runOnce(
 	}
 	log(`Found ${allFiles.length} source file(s)`);
 
-	// Parse coverage
-	const lcovPath = resolve(options.lcov);
-	watchedPaths.add(lcovPath);
-	let lcovContent: string;
-	try {
-		lcovContent = readFileSync(lcovPath, "utf-8");
-	} catch (_e) {
-		throw new Error(
-			`Cannot read LCOV file at ${lcovPath}. ` +
-				`Run your test suite with coverage first (e.g. \`npx vitest run --coverage\`). ` +
-				`You can also specify a different path with --lcov.`,
-		);
+	// Parse coverage (skipped in --duplicates mode, which needs no coverage)
+	let coverageData: ReturnType<typeof parseLcov> = [];
+	if (!options.duplicates) {
+		const lcovPath = resolve(options.lcov as string);
+		watchedPaths.add(lcovPath);
+		let lcovContent: string;
+		try {
+			lcovContent = readFileSync(lcovPath, "utf-8");
+		} catch (_e) {
+			throw new Error(
+				`Cannot read LCOV file at ${lcovPath}. ` +
+					`Run your test suite with coverage first (e.g. \`npx vitest run --coverage\`). ` +
+					`You can also specify a different path with --lcov.`,
+			);
+		}
+		log(`Parsed LCOV: ${lcovPath}`);
+		coverageData = parseLcov(lcovContent);
+		log(`Coverage data for ${coverageData.length} file(s)`);
 	}
-	log(`Parsed LCOV: ${lcovPath}`);
-	const coverageData = parseLcov(lcovContent);
-	log(`Coverage data for ${coverageData.length} file(s)`);
 
 	// Analyze complexity with caching
 	const tsPath = resolveTsPath(resolve(options.path));
@@ -300,6 +310,31 @@ async function runOnce(
 
 	let complexity = [...cachedEntries, ...freshEntries];
 	log(`Found ${complexity.length} function(s)`);
+
+	// Duplicate detection: group functions by body hash, report clones. Runs
+	// independently of coverage/scoring, so short-circuit here.
+	if (options.duplicates) {
+		const groups = findDuplicates(complexity);
+		log(`Found ${groups.length} duplicate group(s)`);
+		const version = getLocalVersion();
+		const output =
+			options.format === "json"
+				? formatDuplicatesJson(groups, version)
+				: formatDuplicatesHuman(groups, {
+						rootPath: resolve(options.path),
+						noColor: options.noColor,
+					});
+		if (options.output) {
+			writeFileSync(resolve(options.output), `${output}\n`, "utf-8");
+		} else {
+			console.log(output);
+		}
+		const updateMessage = await updatePromise;
+		if (updateMessage) console.error(`\n${updateMessage}\n`);
+		// ponytail: report-only — doesn't reuse --fail-above (that gates CRAP
+		// scores). Add a dedicated --fail-on-duplicates if CI gating is wanted.
+		return { watchedPaths, exitCode: 0 };
+	}
 
 	// Attach package info to complexity entries
 	const fileToPackage = new Map(allFiles.map((f) => [f.path, f.package]));

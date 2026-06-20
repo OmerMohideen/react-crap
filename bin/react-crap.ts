@@ -61,6 +61,10 @@ program
 	.option("--watch", "Re-run automatically when files change")
 	.option("--changed", "Only analyze uncommitted .ts/.tsx files")
 	.option(
+		"--duplicates",
+		"Report duplicate functions (identical bodies) instead of CRAP scores",
+	)
+	.option(
 		"--sort <fields>",
 		"Sort display by comma-separated fields: crap, file, name, path, function, line, cc, cyclomatic, coverage, hooks, renderBranches, type",
 		"crap",
@@ -99,6 +103,7 @@ run({
 	verbose: options.verbose ?? false,
 	watch: options.watch ?? false,
 	changed: options.changed ?? false,
+	duplicates: options.duplicates ?? false,
 	sort: options.sort,
 	output: options.output,
 	noColor,

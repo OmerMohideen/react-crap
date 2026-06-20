@@ -8,6 +8,7 @@ export interface ComplexityEntry {
 	endLine: number;
 	cyclomatic: number;
 	bodyHash: string;
+	structuralHash: string;
 	threshold?: number;
 	hooks: string[];
 	hookViolations: string[];
@@ -89,6 +90,10 @@ async function analyzeFile(
 				.update(bodyText)
 				.digest("hex")
 				.slice(0, 16);
+			const structuralHash = createHash("sha256")
+				.update(structuralFingerprint(node, tsMod))
+				.digest("hex")
+				.slice(0, 16);
 			const threshold = getThreshold(node, sourceFile, tsMod);
 			const hooks: string[] = [];
 			const hookViolations: string[] = [];
@@ -103,6 +108,7 @@ async function analyzeFile(
 				endLine,
 				cyclomatic: cc,
 				bodyHash,
+				structuralHash,
 				threshold,
 				hooks,
 				hookViolations,
@@ -323,6 +329,52 @@ async function analyzeFile(
 			current = current.parent;
 		}
 		return undefined;
+	}
+
+	// Clone fingerprint: walk the AST emitting node kinds, keeping identifier
+	// names and literal VALUES intact while dropping whitespace, indentation,
+	// comments, and line-wrapping. Two functions match only if they are the same
+	// code modulo formatting — so reformatted/prettier'd copy-paste matches, but
+	// functions that differ by the identifier or literal that matters (e.g.
+	// `=== BucketHashes.Helmet` vs `.Arms`) do NOT. Keeping names is what stops
+	// the Type-2 false positives that pure normalization produces.
+	function structuralFingerprint(root: any, tsMod: any): string {
+		const out: string[] = [];
+		// Ignore the function's own name so identically-bodied copies under
+		// different names still match (the body is what makes it a clone).
+		const rootName = root.name;
+		function walk(node: any) {
+			if (node === rootName) return;
+			// Redundant parens are formatting noise — prettier wraps multiline JSX
+			// returns in them. Recurse through without emitting a node kind.
+			if (tsMod.isParenthesizedExpression(node)) {
+				tsMod.forEachChild(node, walk);
+				return;
+			}
+			if (
+				tsMod.isIdentifier(node) ||
+				(tsMod.isPrivateIdentifier?.(node) ?? false)
+			) {
+				out.push(`I:${node.text}`);
+			} else if (
+				tsMod.isStringLiteral(node) ||
+				tsMod.isNumericLiteral(node) ||
+				(tsMod.isNoSubstitutionTemplateLiteral?.(node) ?? false) ||
+				(tsMod.isRegularExpressionLiteral?.(node) ?? false) ||
+				node.kind === tsMod.SyntaxKind.BigIntLiteral
+			) {
+				out.push(`L:${node.text}`);
+			} else if (tsMod.isJsxText?.(node) ?? false) {
+				// JSX text: keep meaningful content, ignore surrounding whitespace.
+				const t = String(node.text ?? "").trim();
+				if (t) out.push(`T:${t}`);
+			} else {
+				out.push(`#${node.kind}`);
+			}
+			tsMod.forEachChild(node, walk);
+		}
+		walk(root);
+		return out.join(",");
 	}
 
 	function countBranches(node: any): number {
