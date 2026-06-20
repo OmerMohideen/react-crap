@@ -17,6 +17,7 @@ function entry(part: Partial<ComplexityEntry>): ComplexityEntry {
 		hookViolations: [],
 		isComponent: false,
 		renderBranches: 0,
+		smells: [],
 		...part,
 	};
 }

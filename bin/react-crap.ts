@@ -65,6 +65,10 @@ program
 		"Report duplicate functions (identical bodies) instead of CRAP scores",
 	)
 	.option(
+		"--smells [kinds]",
+		"Report AI-slop smells (effect bugs, unstable props, console, TODO, index keys). Noisy any/! excluded by default; pass 'all' or a comma list of kinds",
+	)
+	.option(
 		"--sort <fields>",
 		"Sort display by comma-separated fields: crap, file, name, path, function, line, cc, cyclomatic, coverage, hooks, renderBranches, type",
 		"crap",
@@ -104,6 +108,8 @@ run({
 	watch: options.watch ?? false,
 	changed: options.changed ?? false,
 	duplicates: options.duplicates ?? false,
+	smells: options.smells !== undefined && options.smells !== false,
+	smellKinds: typeof options.smells === "string" ? options.smells : undefined,
 	sort: options.sort,
 	output: options.output,
 	noColor,

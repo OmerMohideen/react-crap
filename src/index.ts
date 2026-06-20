@@ -23,6 +23,12 @@ import { formatMarkdown } from "./report/markdown.js";
 import { formatPrComment } from "./report/pr-comment.js";
 import { formatSarif } from "./report/sarif.js";
 import { filter, score, sortEntries } from "./score.js";
+import {
+	collectSmells,
+	formatSmellsHuman,
+	formatSmellsJson,
+	resolveKinds,
+} from "./smells.js";
 import { checkForUpdate, getLocalVersion } from "./version-check.js";
 import { walkFiles } from "./walker.js";
 
@@ -53,6 +59,8 @@ export interface RunOptions {
 	noColor?: boolean;
 	sort?: string;
 	duplicates?: boolean;
+	smells?: boolean;
+	smellKinds?: string;
 }
 
 export async function run(rawOptions: RunOptions): Promise<void> {
@@ -177,13 +185,15 @@ async function runOnce(
 		noColor: rawOptions.noColor || false,
 		sort: rawOptions.sort ?? config.sort ?? "crap",
 		duplicates: rawOptions.duplicates ?? false,
+		smells: rawOptions.smells ?? false,
+		smellKinds: rawOptions.smellKinds,
 	};
 
 	const log = (message: string) => {
 		if (options.verbose) console.error(`[react-crap] ${message}`);
 	};
 
-	if (!options.lcov && !options.duplicates) {
+	if (!options.lcov && !options.duplicates && !options.smells) {
 		throw new Error(
 			"--lcov is required. Generate an LCOV report first (e.g. `npx vitest run --coverage` or `npx jest --coverage`).",
 		);
@@ -242,9 +252,9 @@ async function runOnce(
 	}
 	log(`Found ${allFiles.length} source file(s)`);
 
-	// Parse coverage (skipped in --duplicates mode, which needs no coverage)
+	// Parse coverage (skipped in --duplicates/--smells modes, which need none)
 	let coverageData: ReturnType<typeof parseLcov> = [];
-	if (!options.duplicates) {
+	if (!options.duplicates && !options.smells) {
 		const lcovPath = resolve(options.lcov as string);
 		watchedPaths.add(lcovPath);
 		let lcovContent: string;
@@ -333,6 +343,29 @@ async function runOnce(
 		if (updateMessage) console.error(`\n${updateMessage}\n`);
 		// ponytail: report-only — doesn't reuse --fail-above (that gates CRAP
 		// scores). Add a dedicated --fail-on-duplicates if CI gating is wanted.
+		return { watchedPaths, exitCode: 0 };
+	}
+
+	// AI-slop smell detection. Also coverage-independent — short-circuit here.
+	if (options.smells) {
+		const rows = collectSmells(complexity, resolveKinds(options.smellKinds));
+		log(`Found smells in ${rows.length} function(s)`);
+		const version = getLocalVersion();
+		const output =
+			options.format === "json"
+				? formatSmellsJson(rows, version)
+				: formatSmellsHuman(rows, {
+						rootPath: resolve(options.path),
+						noColor: options.noColor,
+					});
+		if (options.output) {
+			writeFileSync(resolve(options.output), `${output}\n`, "utf-8");
+		} else {
+			console.log(output);
+		}
+		const updateMessage = await updatePromise;
+		if (updateMessage) console.error(`\n${updateMessage}\n`);
+		// ponytail: report-only. Add --fail-on-smells for CI gating if wanted.
 		return { watchedPaths, exitCode: 0 };
 	}
 

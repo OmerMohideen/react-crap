@@ -6,7 +6,12 @@
 		"useIgnoreFile": false
 	},
 	"files": {
-		"includes": ["**", "!!**/dist", "!!**/.react-crap-cache.json"]
+		"includes": [
+			"**",
+			"!!**/dist",
+			"!!**/.react-crap-cache.json",
+			"!!**/test/fixtures"
+		]
 	},
 	"formatter": {
 		"enabled": true,
