@@ -90,7 +90,7 @@ export function formatDeadCodeHuman(
 		style: { head: [], border: [] },
 		wordWrap: true,
 	});
-	for (const d of dead) table.push([d.name, loc(d.file, d.line)]);
+	for (const d of dead) table.push([c.yellow(d.name), loc(d.file, d.line)]);
 
 	return [
 		c.yellow(`Found ${dead.length} unused import(s):`),

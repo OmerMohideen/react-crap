@@ -72,13 +72,31 @@ export function countByKind(rows: SmellRow[]): Record<string, number> {
 	return counts;
 }
 
+// Severity buckets drive the Kind colour. red = likely bug, yellow = perf/
+// quality, dim = housekeeping.
+const BUG_KINDS = new Set<SmellKind>([
+	"effect-missing-deps",
+	"effect-missing-cleanup",
+	"index-as-key",
+	"test-no-assert",
+]);
+const HOUSEKEEPING_KINDS = new Set<SmellKind>([
+	"console",
+	"todo",
+	"placeholder",
+]);
+
 export function formatSmellsHuman(
 	rows: SmellRow[],
 	opts: { rootPath?: string; noColor?: boolean } = {},
 ): string {
-	const c = opts.noColor
-		? { yellow: (s: string) => s, gray: (s: string) => s }
-		: pc;
+	const id = (s: string) => s;
+	const c = opts.noColor ? { yellow: id, gray: id, red: id, dim: id } : pc;
+	const paintKind = (kind: string) => {
+		if (BUG_KINDS.has(kind as SmellKind)) return c.red(kind);
+		if (HOUSEKEEPING_KINDS.has(kind as SmellKind)) return c.dim(kind);
+		return c.yellow(kind);
+	};
 	const loc = (file: string, line: number) =>
 		opts.rootPath
 			? `${relative(opts.rootPath, file).replace(/\\/g, "/")}:${line}`
@@ -111,7 +129,7 @@ export function formatSmellsHuman(
 			const more = lines.length > 6 ? ` +${lines.length - 6}` : "";
 			table.push([
 				j === 0 ? `${r.function}\n${c.gray(loc(r.file, r.line))}` : "",
-				kind,
+				paintKind(kind),
 				String(lines.length),
 				shown + more,
 			]);
@@ -122,7 +140,7 @@ export function formatSmellsHuman(
 	const total = Object.values(counts).reduce((a, b) => a + b, 0);
 	const summary = Object.entries(counts)
 		.sort((a, b) => b[1] - a[1])
-		.map(([k, n]) => `${k}: ${n}`)
+		.map(([k, n]) => `${paintKind(k)}: ${n}`)
 		.join("  ");
 
 	return [

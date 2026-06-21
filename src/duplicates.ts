@@ -76,9 +76,8 @@ export function formatDuplicatesHuman(
 	groups: DuplicateGroup[],
 	opts: { rootPath?: string; noColor?: boolean } = {},
 ): string {
-	const c = opts.noColor
-		? { yellow: (s: string) => s, gray: (s: string) => s }
-		: pc;
+	const id = (s: string) => s;
+	const c = opts.noColor ? { yellow: id, gray: id, red: id } : pc;
 	const loc = (file: string, line: number) =>
 		opts.rootPath
 			? `${relative(opts.rootPath, file).replace(/\\/g, "/")}:${line}`
@@ -96,11 +95,16 @@ export function formatDuplicatesHuman(
 	});
 
 	groups.forEach((g, i) => {
+		// More copies = louder. 2 = yellow, 3+ = red.
+		const copies =
+			g.members.length >= 3
+				? c.red(String(g.members.length))
+				: c.yellow(String(g.members.length));
 		g.members.forEach((m, j) => {
 			// Show group-level columns only on the first row of each group.
 			table.push([
 				j === 0 ? String(i + 1) : "",
-				j === 0 ? String(g.members.length) : "",
+				j === 0 ? copies : "",
 				j === 0 ? String(g.lines) : "",
 				j === 0 ? String(g.cyclomatic) : "",
 				m.function,
