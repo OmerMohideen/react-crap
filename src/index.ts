@@ -365,6 +365,13 @@ async function runOnce(
 	// Duplicate detection: group functions by body hash, report clones. Runs
 	// independently of coverage/scoring, so short-circuit here.
 	if (options.duplicates) {
+		if (options.duplicateMode && options.duplicateMode !== "normalized") {
+			throw new Error(
+				`Unknown --duplicates mode "${options.duplicateMode}". ` +
+					`Use --duplicates (exact) or --duplicates normalized. ` +
+					`Did you mean to pass a flag like --format with a leading "--"?`,
+			);
+		}
 		const normalized = options.duplicateMode === "normalized";
 		const groups = findDuplicates(complexity, { normalized });
 		log(`Found ${groups.length} duplicate group(s)`);
