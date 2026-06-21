@@ -122,6 +122,27 @@ export function formatDuplicatesHuman(
 	].join("\n");
 }
 
+// GitHub Actions annotations: one ::warning per duplicate member.
+export function formatDuplicatesGithub(groups: DuplicateGroup[]): string {
+	const lines: string[] = [];
+	for (const g of groups) {
+		for (const m of g.members) {
+			const others = g.members
+				.filter((o) => o !== m)
+				.map(
+					(o) =>
+						`${relative(process.cwd(), o.file).replace(/\\/g, "/")}:${o.line}`,
+				)
+				.join(", ");
+			const file = relative(process.cwd(), m.file).replace(/\\/g, "/");
+			lines.push(
+				`::warning file=${file},line=${m.line},title=react-crap/duplicate::Duplicate function (${g.members.length} copies). Also at: ${others}`,
+			);
+		}
+	}
+	return lines.join("\n");
+}
+
 export function formatDuplicatesJson(
 	groups: DuplicateGroup[],
 	version: string,

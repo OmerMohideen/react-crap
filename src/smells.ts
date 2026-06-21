@@ -150,6 +150,21 @@ export function formatSmellsHuman(
 	].join("\n");
 }
 
+// GitHub Actions annotations: one ::warning per smell, attached to file:line.
+// Paths are made relative to cwd so they line up with the PR diff.
+export function formatSmellsGithub(rows: SmellRow[]): string {
+	const lines: string[] = [];
+	for (const r of rows) {
+		for (const s of r.smells) {
+			const file = relative(process.cwd(), r.file).replace(/\\/g, "/");
+			lines.push(
+				`::warning file=${file},line=${s.line},title=react-crap/${s.kind}::${s.detail}`,
+			);
+		}
+	}
+	return lines.join("\n");
+}
+
 export function formatSmellsJson(rows: SmellRow[], version: string): string {
 	return JSON.stringify(
 		{ version, counts: countByKind(rows), smells: rows },

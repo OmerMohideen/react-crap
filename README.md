@@ -109,6 +109,10 @@ Example output:
 | `--jobs <N>` | host CPUs | Cap parallel source-file analysis at `N` threads. Useful in memory-constrained CI/Docker environments. Must be a positive integer. |
 | `--output <FILE>` | — | Write output to FILE instead of stdout (useful for saving JSON baselines). |
 | `--no-color` | — | Disable colored output. |
+| `--duplicates [mode]` | — | Report duplicate functions instead of CRAP scores. No coverage needed. Default matches reformatted copy-paste; `normalized` also matches Type-2 near-duplicates (renamed/retyped). |
+| `--smells [kinds]` | — | Report AI-slop smells instead of CRAP scores. No coverage needed. Noisy `any`/`!` excluded by default; pass `all` or a comma list of kinds. See [Code-review checks](#code-review-checks-no-coverage). |
+| `--dead-code` | — | Report unused imports instead of CRAP scores. No coverage needed. |
+| `--checks` | — | Run **all** coverage-free checks (duplicates + smells + dead code) in one report. Pair with `--changed` for pre-commit hooks. |
 
 ### Filtering order
 
@@ -279,6 +283,93 @@ Some functions have complexity data but no coverage data — the coverage tool d
 - **pessimistic** (default): treat as 0% covered. Surfaces unmapped code as a red flag. Correct for CI gates.
 - **optimistic**: treat as 100% covered. Useful during local development when you're iterating on a specific module.
 - **skip**: drop the row entirely.
+
+## Code-review checks (no coverage)
+
+Beyond the CRAP score, three coverage-free checks hunt the patterns that AI-generated React tends to leave behind. None need an LCOV file.
+
+```bash
+# Duplicate functions (copy-paste). --duplicates normalized also finds
+# Type-2 near-duplicates (renamed vars/types, different literals).
+npx react-crap --duplicates
+npx react-crap --duplicates normalized
+
+# AI-slop smells. Noisy any/! are hidden by default.
+npx react-crap --smells                       # curated default set
+npx react-crap --smells all                   # everything, incl. any/!
+npx react-crap --smells effect-missing-deps,index-as-key
+
+# Unused imports.
+npx react-crap --dead-code
+
+# Everything above in one report.
+npx react-crap --checks
+```
+
+Smell kinds: `effect-missing-deps`, `effect-missing-cleanup`, `effect-derived-state`, `unstable-prop`, `index-as-key`, `passthrough-wrapper`, `test-no-assert`, `as-any`, `non-null-assertion`, `type-any`, `ts-suppress`, `console`, `todo`, `placeholder`. In the human report kinds are colored by severity (red = likely bug, yellow = quality, dim = housekeeping).
+
+All three are **report-only** — they print findings and exit 0, so they never block. Add `--format json` for machine output.
+
+### Pre-commit hook (husky + lint-staged)
+
+`--checks --changed` scopes to your uncommitted `.ts`/`.tsx` files and prints all findings without blocking the commit — ideal for surfacing issues at commit time.
+
+`.husky/pre-commit`:
+
+```sh
+npx react-crap --checks --changed --no-color || true
+```
+
+`--changed` self-scopes via git, so it does **not** depend on lint-staged passing file paths. To run it inside lint-staged alongside other linters (its file arguments are ignored):
+
+```json
+{
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "biome check --write",
+      "react-crap --checks --changed --no-color"
+    ]
+  }
+}
+```
+
+Drop the `|| true` (or lint-staged's non-zero tolerance) if you ever add a `--fail-on-*` gate and want the commit blocked.
+
+### In CI (any platform)
+
+The output is platform-neutral. Run `--checks` in any CI and pick the renderer that fits:
+
+- **`--checks`** (human, default) — readable table in the job log. Works in GitLab CI, Jenkins, CircleCI, Buildkite, a terminal, anywhere.
+- **`--checks --format json`** — machine-readable; pipe into your own annotator, dashboard, or quality gate. This is the portable interchange format.
+- **`--checks --format github`** — *optional* GitHub Actions sugar: emits `::warning file=…,line=…` lines that GitHub renders inline on the PR diff. Only useful on GitHub Actions; everywhere else use human or json.
+
+```yaml
+# GitHub Actions example (github renderer for inline PR annotations)
+on: pull_request
+jobs:
+  react-crap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npx react-crap --checks --format github
+```
+
+```yaml
+# GitLab CI example (human output in the job log; json artifact for tooling)
+react-crap:
+  script:
+    - npx react-crap --checks
+    - npx react-crap --checks --format json > react-crap.json
+  artifacts:
+    paths: [react-crap.json]
+```
+
+Notes:
+- `--format json`/`github` are supported by `--checks`, `--smells`, `--duplicates`, and `--dead-code`.
+- **Do not** add `--changed` in CI — it reads the working tree (uncommitted edits), which is empty on a fresh checkout. CI scans the whole `--path`.
+- Report-only, so the job stays green. Add a `--fail-on-*` gate (not yet implemented) to block merges.
 
 ## Integrating with CI
 

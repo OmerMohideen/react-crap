@@ -98,6 +98,16 @@ export function formatDeadCodeHuman(
 	].join("\n");
 }
 
+// GitHub Actions annotations: one ::warning per unused import.
+export function formatDeadCodeGithub(dead: DeadImport[]): string {
+	return dead
+		.map((d) => {
+			const file = relative(process.cwd(), d.file).replace(/\\/g, "/");
+			return `::warning file=${file},line=${d.line},title=react-crap/dead-code::Unused import '${d.name}'`;
+		})
+		.join("\n");
+}
+
 export function formatDeadCodeJson(
 	dead: DeadImport[],
 	version: string,

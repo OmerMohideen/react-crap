@@ -70,6 +70,10 @@ program
 	)
 	.option("--dead-code", "Report unused imports instead of CRAP scores")
 	.option(
+		"--checks",
+		"Run all coverage-free checks (duplicates + smells + dead code) in one report. Pair with --changed for pre-commit hooks",
+	)
+	.option(
 		"--sort <fields>",
 		"Sort display by comma-separated fields: crap, file, name, path, function, line, cc, cyclomatic, coverage, hooks, renderBranches, type",
 		"crap",
@@ -114,6 +118,7 @@ run({
 	smells: options.smells !== undefined && options.smells !== false,
 	smellKinds: typeof options.smells === "string" ? options.smells : undefined,
 	deadCode: options.deadCode ?? false,
+	checks: options.checks ?? false,
 	sort: options.sort,
 	output: options.output,
 	noColor,
