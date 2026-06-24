@@ -1,6 +1,38 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
+export type SmellKind =
+	| "effect-missing-deps"
+	| "effect-missing-cleanup"
+	| "effect-derived-state"
+	| "unstable-prop"
+	| "type-any"
+	| "non-null-assertion"
+	| "as-any"
+	| "ts-suppress"
+	| "console"
+	| "todo"
+	| "placeholder"
+	| "index-as-key"
+	| "passthrough-wrapper"
+	| "test-no-assert";
+
+export interface Smell {
+	kind: SmellKind;
+	detail: string;
+	line: number;
+}
+
+// Parse .ts as TS (not TSX) so generic arrows `const f = <T>(x) =>` aren't
+// misread as JSX. Only .tsx/.jsx get the JSX grammar.
+export function scriptKind(file: string, tsMod: any): any {
+	if (file.endsWith(".tsx")) return tsMod.ScriptKind.TSX;
+	if (file.endsWith(".jsx")) return tsMod.ScriptKind.JSX;
+	if (file.endsWith(".js") || file.endsWith(".mjs") || file.endsWith(".cjs"))
+		return tsMod.ScriptKind.JS;
+	return tsMod.ScriptKind.TS;
+}
+
 export interface ComplexityEntry {
 	file: string;
 	function: string;
@@ -8,11 +40,14 @@ export interface ComplexityEntry {
 	endLine: number;
 	cyclomatic: number;
 	bodyHash: string;
+	structuralHash: string;
+	normalizedHash: string;
 	threshold?: number;
 	hooks: string[];
 	hookViolations: string[];
 	isComponent: boolean;
 	renderBranches: number;
+	smells: Smell[];
 }
 
 export async function analyzeComplexity(
@@ -56,7 +91,7 @@ async function analyzeFile(
 		content,
 		tsMod.ScriptTarget.ES2022,
 		true, // setParentNodes
-		tsMod.ScriptKind.TSX,
+		scriptKind(file, tsMod),
 	);
 
 	if (onProgress && current && total) {
@@ -89,12 +124,21 @@ async function analyzeFile(
 				.update(bodyText)
 				.digest("hex")
 				.slice(0, 16);
+			const structuralHash = createHash("sha256")
+				.update(structuralFingerprint(node, tsMod))
+				.digest("hex")
+				.slice(0, 16);
+			const normalizedHash = createHash("sha256")
+				.update(structuralFingerprint(node, tsMod, true))
+				.digest("hex")
+				.slice(0, 16);
 			const threshold = getThreshold(node, sourceFile, tsMod);
 			const hooks: string[] = [];
 			const hookViolations: string[] = [];
 			collectHooks(node, sourceFile, tsMod, hooks, hookViolations, true);
 			const isComponent = detectComponent(node, sourceFile, tsMod);
 			const renderBranches = countRenderBranches(node, sourceFile, tsMod);
+			const smells = detectSmells(node, sourceFile, tsMod, bodyText);
 
 			results.push({
 				file: sourceFile.fileName,
@@ -103,11 +147,14 @@ async function analyzeFile(
 				endLine,
 				cyclomatic: cc,
 				bodyHash,
+				structuralHash,
+				normalizedHash,
 				threshold,
 				hooks,
 				hookViolations,
 				isComponent,
 				renderBranches,
+				smells,
 			});
 		}
 
@@ -323,6 +370,358 @@ async function analyzeFile(
 			current = current.parent;
 		}
 		return undefined;
+	}
+
+	// AI-slop smell detection. Scans a function's OWN body (does not recurse
+	// into nested functions — each gets its own entry), with special handling
+	// for useEffect callbacks. ponytail: heuristic, not a type-checker — favours
+	// few false positives over completeness.
+	function detectSmells(
+		fnNode: any,
+		sourceFile: any,
+		tsMod: any,
+		bodyText: string,
+	): Smell[] {
+		const smells: Smell[] = [];
+		const lineOf = (n: any) =>
+			sourceFile.getLineAndCharacterOfPosition(n.getStart(sourceFile)).line + 1;
+
+		const isFn = (n: any) =>
+			tsMod.isArrowFunction(n) ||
+			tsMod.isFunctionExpression(n) ||
+			tsMod.isFunctionDeclaration(n) ||
+			tsMod.isMethodDeclaration(n);
+
+		const calleeName = (expr: any): string | undefined => {
+			if (tsMod.isIdentifier(expr)) return expr.text;
+			if (
+				tsMod.isPropertyAccessExpression(expr) &&
+				tsMod.isIdentifier(expr.name)
+			)
+				return expr.name.text;
+			return undefined;
+		};
+
+		// Leftmost identifier of a call/member chain: it.only -> "it",
+		// expect(x).toBe -> "expect".
+		const baseCalleeName = (expr: any): string | undefined => {
+			let e = expr;
+			while (e) {
+				if (tsMod.isIdentifier(e)) return e.text;
+				if (tsMod.isPropertyAccessExpression(e)) e = e.expression;
+				else if (tsMod.isCallExpression(e)) e = e.expression;
+				else if (tsMod.isParenthesizedExpression(e)) e = e.expression;
+				else return undefined;
+			}
+			return undefined;
+		};
+
+		// If this function is the callback of a .map()/.forEach(), its 2nd param
+		// is the loop index — flag `key={index}` uses below.
+		let indexParam: string | undefined;
+		const parent = fnNode.parent;
+		if (
+			parent &&
+			tsMod.isCallExpression(parent) &&
+			/^(map|forEach|flatMap)$/.test(calleeName(parent.expression) ?? "") &&
+			fnNode.parameters?.length >= 2 &&
+			tsMod.isIdentifier(fnNode.parameters[1].name)
+		) {
+			indexParam = fnNode.parameters[1].name.text;
+		}
+
+		// Passthrough wrapper: a component whose whole body is `return <X {...p} />`
+		// — AI over-abstraction that adds a layer doing nothing.
+		(function checkPassthrough() {
+			const body = fnNode.body;
+			if (!body) return;
+			let ret: any;
+			if (tsMod.isBlock(body)) {
+				if (
+					body.statements.length === 1 &&
+					tsMod.isReturnStatement(body.statements[0])
+				) {
+					ret = body.statements[0].expression;
+				}
+			} else {
+				ret = body; // concise arrow
+			}
+			while (ret && tsMod.isParenthesizedExpression(ret)) ret = ret.expression;
+			if (!ret) return;
+			let attrs: any;
+			if (tsMod.isJsxSelfClosingElement(ret))
+				attrs = ret.attributes?.properties;
+			else if (tsMod.isJsxElement(ret))
+				attrs = ret.openingElement?.attributes?.properties;
+			if (!attrs) return;
+			if (attrs.some((a: any) => tsMod.isJsxSpreadAttribute(a))) {
+				smells.push({
+					kind: "passthrough-wrapper",
+					detail:
+						"component only spreads props into one element (no value added)",
+					line: lineOf(fnNode),
+				});
+			}
+		})();
+
+		// Assertion-less test: an it()/test() callback with no expect()/assert().
+		if (
+			/\.(test|spec)\.[jt]sx?$/.test(sourceFile.fileName) &&
+			parent &&
+			tsMod.isCallExpression(parent) &&
+			/^(it|test)$/.test(baseCalleeName(parent.expression) ?? "")
+		) {
+			let asserts = false;
+			(function scan(n: any) {
+				if (asserts) return;
+				if (tsMod.isCallExpression(n)) {
+					const nm = calleeName(n.expression) ?? "";
+					const root = baseCalleeName(n.expression) ?? "";
+					if (root === "expect" || /^assert/i.test(nm) || /^assert/i.test(root))
+						asserts = true;
+				}
+				tsMod.forEachChild(n, scan);
+			})(fnNode);
+			if (!asserts) {
+				smells.push({
+					kind: "test-no-assert",
+					detail: "test has no expect()/assert() — asserts nothing",
+					line: lineOf(fnNode),
+				});
+			}
+		}
+
+		function analyzeEffect(call: any) {
+			const cb = call.arguments?.[0];
+			const hasDeps = call.arguments?.length >= 2;
+			const line = lineOf(call);
+			if (!hasDeps) {
+				smells.push({
+					kind: "effect-missing-deps",
+					detail: "useEffect with no dependency array (runs every render)",
+					line,
+				});
+			}
+			if (!cb || !(tsMod.isArrowFunction(cb) || tsMod.isFunctionExpression(cb)))
+				return;
+
+			let returnsFn = false;
+			let subscribes = false;
+			const SUB =
+				/^(addEventListener|setInterval|setTimeout|subscribe|addListener|on)$/;
+			(function scan(n: any) {
+				if (
+					tsMod.isReturnStatement(n) &&
+					n.expression &&
+					(tsMod.isArrowFunction(n.expression) ||
+						tsMod.isFunctionExpression(n.expression))
+				) {
+					returnsFn = true;
+				}
+				if (
+					tsMod.isCallExpression(n) &&
+					SUB.test(calleeName(n.expression) ?? "")
+				)
+					subscribes = true;
+				tsMod.forEachChild(n, scan);
+			})(cb);
+
+			if (subscribes && !returnsFn) {
+				smells.push({
+					kind: "effect-missing-cleanup",
+					detail:
+						"effect subscribes/sets a timer but returns no cleanup function",
+					line,
+				});
+			}
+
+			// "You might not need an effect": body does nothing but call setters.
+			const body = cb.body;
+			if (body && tsMod.isBlock(body) && body.statements.length > 0) {
+				const allSetters = body.statements.every(
+					(s: any) =>
+						tsMod.isExpressionStatement(s) &&
+						tsMod.isCallExpression(s.expression) &&
+						/^set[A-Z]/.test(calleeName(s.expression.expression) ?? ""),
+				);
+				if (allSetters) {
+					smells.push({
+						kind: "effect-derived-state",
+						detail: "effect only calls setState — derive during render instead",
+						line,
+					});
+				}
+			}
+		}
+
+		const UNSTABLE_PROP = new Set([
+			"ObjectLiteralExpression",
+			"ArrayLiteralExpression",
+		]);
+		function checkJsxAttr(attr: any) {
+			const attrName = tsMod.isIdentifier(attr.name) ? attr.name.text : "";
+			const init = attr.initializer;
+			if (!init || !tsMod.isJsxExpression(init) || !init.expression) return;
+			const expr = init.expression;
+
+			if (attrName === "key" && indexParam) {
+				if (tsMod.isIdentifier(expr) && expr.text === indexParam) {
+					smells.push({
+						kind: "index-as-key",
+						detail: "list key is the array index (unstable across reorders)",
+						line: lineOf(attr),
+					});
+				}
+				return;
+			}
+
+			const kind = tsMod.SyntaxKind[expr.kind];
+			if (
+				tsMod.isArrowFunction(expr) ||
+				tsMod.isFunctionExpression(expr) ||
+				UNSTABLE_PROP.has(kind)
+			) {
+				smells.push({
+					kind: "unstable-prop",
+					detail: `inline ${
+						tsMod.isArrowFunction(expr) || tsMod.isFunctionExpression(expr)
+							? "function"
+							: kind.replace("Expression", "").toLowerCase()
+					} prop "${attrName}" (new reference every render)`,
+					line: lineOf(attr),
+				});
+			}
+		}
+
+		// Walk own body; do not descend into nested functions (separate entries).
+		(function walk(node: any) {
+			if (node !== fnNode && isFn(node)) return;
+
+			if (tsMod.isCallExpression(node)) {
+				const name = calleeName(node.expression);
+				if (name === "useEffect" || name === "useLayoutEffect")
+					analyzeEffect(node);
+				if (
+					tsMod.isPropertyAccessExpression(node.expression) &&
+					tsMod.isIdentifier(node.expression.expression) &&
+					node.expression.expression.text === "console"
+				) {
+					smells.push({
+						kind: "console",
+						detail: `console.${name} left in code`,
+						line: lineOf(node),
+					});
+				}
+			}
+			if (tsMod.isJsxAttribute(node)) checkJsxAttr(node);
+			if (node.kind === tsMod.SyntaxKind.AnyKeyword) {
+				smells.push({
+					kind: "type-any",
+					detail: "any type",
+					line: lineOf(node),
+				});
+			}
+			if (tsMod.isNonNullExpression(node)) {
+				smells.push({
+					kind: "non-null-assertion",
+					detail: "non-null assertion (!)",
+					line: lineOf(node),
+				});
+			}
+			if (
+				(tsMod.isAsExpression(node) ||
+					(tsMod.isSatisfiesExpression?.(node) ?? false)) &&
+				node.type &&
+				(node.type.kind === tsMod.SyntaxKind.AnyKeyword ||
+					node.type.kind === tsMod.SyntaxKind.UnknownKeyword)
+			) {
+				smells.push({
+					kind: "as-any",
+					detail: "cast to any/unknown",
+					line: lineOf(node),
+				});
+			}
+
+			tsMod.forEachChild(node, walk);
+		})(fnNode);
+
+		// Comment-based markers (not in the AST). Scan the body text once.
+		const startLine = lineOf(fnNode);
+		const pushComment = (kind: SmellKind, detail: string, re: RegExp) => {
+			if (re.test(bodyText)) {
+				const idx = bodyText.search(re);
+				const before = bodyText.slice(0, idx);
+				const line = startLine + (before.match(/\n/g)?.length ?? 0);
+				smells.push({ kind, detail, line });
+			}
+		};
+		pushComment(
+			"ts-suppress",
+			"@ts-ignore / @ts-expect-error / @ts-nocheck",
+			/@ts-(ignore|expect-error|nocheck)/,
+		);
+		pushComment("todo", "TODO/FIXME/HACK comment", /\b(TODO|FIXME|XXX|HACK)\b/);
+		pushComment(
+			"placeholder",
+			"placeholder comment (stubbed/unfinished code)",
+			/\/\/\s*\.\.\.|rest of (the )?(implementation|code)|your code here|implementation (goes )?here|implement (this|me)\b/i,
+		);
+
+		return smells;
+	}
+
+	// Clone fingerprint: walk the AST emitting node kinds, keeping identifier
+	// names and literal VALUES intact while dropping whitespace, indentation,
+	// comments, and line-wrapping. Two functions match only if they are the same
+	// code modulo formatting — so reformatted/prettier'd copy-paste matches, but
+	// functions that differ by the identifier or literal that matters (e.g.
+	// `=== BucketHashes.Helmet` vs `.Arms`) do NOT. Keeping names is what stops
+	// the Type-2 false positives that pure normalization produces.
+	// normalize=false (default): keep identifier names + literal values — matches
+	//   reformatted copy-paste only (Type-1 modulo formatting).
+	// normalize=true: collapse every identifier/literal to a placeholder — matches
+	//   renamed/retyped near-duplicates too (Type-2). Noisier; opt-in.
+	function structuralFingerprint(
+		root: any,
+		tsMod: any,
+		normalize = false,
+	): string {
+		const out: string[] = [];
+		// Ignore the function's own name so identically-bodied copies under
+		// different names still match (the body is what makes it a clone).
+		const rootName = root.name;
+		function walk(node: any) {
+			if (node === rootName) return;
+			// Redundant parens are formatting noise — prettier wraps multiline JSX
+			// returns in them. Recurse through without emitting a node kind.
+			if (tsMod.isParenthesizedExpression(node)) {
+				tsMod.forEachChild(node, walk);
+				return;
+			}
+			if (
+				tsMod.isIdentifier(node) ||
+				(tsMod.isPrivateIdentifier?.(node) ?? false)
+			) {
+				out.push(normalize ? "I" : `I:${node.text}`);
+			} else if (
+				tsMod.isStringLiteral(node) ||
+				tsMod.isNumericLiteral(node) ||
+				(tsMod.isNoSubstitutionTemplateLiteral?.(node) ?? false) ||
+				(tsMod.isRegularExpressionLiteral?.(node) ?? false) ||
+				node.kind === tsMod.SyntaxKind.BigIntLiteral
+			) {
+				out.push(normalize ? "L" : `L:${node.text}`);
+			} else if (tsMod.isJsxText?.(node) ?? false) {
+				// JSX text: keep meaningful content, ignore surrounding whitespace.
+				const t = String(node.text ?? "").trim();
+				if (t) out.push(normalize ? "T" : `T:${t}`);
+			} else {
+				out.push(`#${node.kind}`);
+			}
+			tsMod.forEachChild(node, walk);
+		}
+		walk(root);
+		return out.join(",");
 	}
 
 	function countBranches(node: any): number {

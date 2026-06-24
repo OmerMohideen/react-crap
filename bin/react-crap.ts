@@ -61,6 +61,19 @@ program
 	.option("--watch", "Re-run automatically when files change")
 	.option("--changed", "Only analyze uncommitted .ts/.tsx files")
 	.option(
+		"--duplicates [mode]",
+		"Report duplicate functions instead of CRAP scores. Pass 'normalized' for Type-2 near-duplicates (renamed/retyped)",
+	)
+	.option(
+		"--smells [kinds]",
+		"Report AI-slop smells (effect bugs, unstable props, console, TODO, index keys). Noisy any/! excluded by default; pass 'all' or a comma list of kinds",
+	)
+	.option("--dead-code", "Report unused imports instead of CRAP scores")
+	.option(
+		"--checks",
+		"Run all coverage-free checks (duplicates + smells + dead code) in one report. Pair with --changed for pre-commit hooks",
+	)
+	.option(
 		"--sort <fields>",
 		"Sort display by comma-separated fields: crap, file, name, path, function, line, cc, cyclomatic, coverage, hooks, renderBranches, type",
 		"crap",
@@ -99,6 +112,13 @@ run({
 	verbose: options.verbose ?? false,
 	watch: options.watch ?? false,
 	changed: options.changed ?? false,
+	duplicates: options.duplicates !== undefined && options.duplicates !== false,
+	duplicateMode:
+		typeof options.duplicates === "string" ? options.duplicates : undefined,
+	smells: options.smells !== undefined && options.smells !== false,
+	smellKinds: typeof options.smells === "string" ? options.smells : undefined,
+	deadCode: options.deadCode ?? false,
+	checks: options.checks ?? false,
 	sort: options.sort,
 	output: options.output,
 	noColor,

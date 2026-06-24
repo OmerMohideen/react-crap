@@ -6,7 +6,19 @@ import { hashFile, loadCache, saveCache } from "./cache.js";
 import { analyzeComplexity } from "./complexity.js";
 import { loadConfig } from "./config.js";
 import { parseLcov } from "./coverage.js";
+import {
+	findDeadImports,
+	formatDeadCodeGithub,
+	formatDeadCodeHuman,
+	formatDeadCodeJson,
+} from "./deadcode.js";
 import { computeDelta, loadBaseline } from "./delta.js";
+import {
+	findDuplicates,
+	formatDuplicatesGithub,
+	formatDuplicatesHuman,
+	formatDuplicatesJson,
+} from "./duplicates.js";
 import { getChangedFiles } from "./git.js";
 import { getChangedLineRanges } from "./git-diff.js";
 import { merge } from "./merge.js";
@@ -18,6 +30,13 @@ import { formatMarkdown } from "./report/markdown.js";
 import { formatPrComment } from "./report/pr-comment.js";
 import { formatSarif } from "./report/sarif.js";
 import { filter, score, sortEntries } from "./score.js";
+import {
+	collectSmells,
+	formatSmellsGithub,
+	formatSmellsHuman,
+	formatSmellsJson,
+	resolveKinds,
+} from "./smells.js";
 import { checkForUpdate, getLocalVersion } from "./version-check.js";
 import { walkFiles } from "./walker.js";
 
@@ -47,6 +66,12 @@ export interface RunOptions {
 	changed?: boolean;
 	noColor?: boolean;
 	sort?: string;
+	duplicates?: boolean;
+	duplicateMode?: string;
+	smells?: boolean;
+	smellKinds?: string;
+	deadCode?: boolean;
+	checks?: boolean;
 }
 
 export async function run(rawOptions: RunOptions): Promise<void> {
@@ -170,13 +195,25 @@ async function runOnce(
 		changed: rawOptions.changed ?? false,
 		noColor: rawOptions.noColor || false,
 		sort: rawOptions.sort ?? config.sort ?? "crap",
+		duplicates: rawOptions.duplicates ?? false,
+		duplicateMode: rawOptions.duplicateMode,
+		smells: rawOptions.smells ?? false,
+		smellKinds: rawOptions.smellKinds,
+		deadCode: rawOptions.deadCode ?? false,
+		checks: rawOptions.checks ?? false,
 	};
 
 	const log = (message: string) => {
 		if (options.verbose) console.error(`[react-crap] ${message}`);
 	};
 
-	if (!options.lcov) {
+	if (
+		!options.lcov &&
+		!options.duplicates &&
+		!options.smells &&
+		!options.deadCode &&
+		!options.checks
+	) {
 		throw new Error(
 			"--lcov is required. Generate an LCOV report first (e.g. `npx vitest run --coverage` or `npx jest --coverage`).",
 		);
@@ -235,22 +272,54 @@ async function runOnce(
 	}
 	log(`Found ${allFiles.length} source file(s)`);
 
-	// Parse coverage
-	const lcovPath = resolve(options.lcov);
-	watchedPaths.add(lcovPath);
-	let lcovContent: string;
-	try {
-		lcovContent = readFileSync(lcovPath, "utf-8");
-	} catch (_e) {
-		throw new Error(
-			`Cannot read LCOV file at ${lcovPath}. ` +
-				`Run your test suite with coverage first (e.g. \`npx vitest run --coverage\`). ` +
-				`You can also specify a different path with --lcov.`,
+	// Dead-code (unused imports) needs only the file list — short-circuit here,
+	// before coverage and complexity analysis.
+	if (options.deadCode) {
+		const tsPath = resolveTsPath(resolve(options.path));
+		const dead = await findDeadImports(
+			allFiles.map((f) => f.path),
+			tsPath,
 		);
+		log(`Found ${dead.length} unused import(s)`);
+		const version = getLocalVersion();
+		const output =
+			options.format === "json"
+				? formatDeadCodeJson(dead, version)
+				: options.format === "github"
+					? formatDeadCodeGithub(dead)
+					: formatDeadCodeHuman(dead, {
+							rootPath: resolve(options.path),
+							noColor: options.noColor,
+						});
+		if (options.output) {
+			writeFileSync(resolve(options.output), `${output}\n`, "utf-8");
+		} else {
+			console.log(output);
+		}
+		const updateMessage = await updatePromise;
+		if (updateMessage) console.error(`\n${updateMessage}\n`);
+		return { watchedPaths, exitCode: 0 };
 	}
-	log(`Parsed LCOV: ${lcovPath}`);
-	const coverageData = parseLcov(lcovContent);
-	log(`Coverage data for ${coverageData.length} file(s)`);
+
+	// Parse coverage (skipped in --duplicates/--smells modes, which need none)
+	let coverageData: ReturnType<typeof parseLcov> = [];
+	if (!options.duplicates && !options.smells && !options.checks) {
+		const lcovPath = resolve(options.lcov as string);
+		watchedPaths.add(lcovPath);
+		let lcovContent: string;
+		try {
+			lcovContent = readFileSync(lcovPath, "utf-8");
+		} catch (_e) {
+			throw new Error(
+				`Cannot read LCOV file at ${lcovPath}. ` +
+					`Run your test suite with coverage first (e.g. \`npx vitest run --coverage\`). ` +
+					`You can also specify a different path with --lcov.`,
+			);
+		}
+		log(`Parsed LCOV: ${lcovPath}`);
+		coverageData = parseLcov(lcovContent);
+		log(`Coverage data for ${coverageData.length} file(s)`);
+	}
 
 	// Analyze complexity with caching
 	const tsPath = resolveTsPath(resolve(options.path));
@@ -300,6 +369,128 @@ async function runOnce(
 
 	let complexity = [...cachedEntries, ...freshEntries];
 	log(`Found ${complexity.length} function(s)`);
+
+	// Duplicate detection: group functions by body hash, report clones. Runs
+	// independently of coverage/scoring, so short-circuit here.
+	if (options.duplicates) {
+		if (options.duplicateMode && options.duplicateMode !== "normalized") {
+			throw new Error(
+				`Unknown --duplicates mode "${options.duplicateMode}". ` +
+					`Use --duplicates (exact) or --duplicates normalized. ` +
+					`Did you mean to pass a flag like --format with a leading "--"?`,
+			);
+		}
+		const normalized = options.duplicateMode === "normalized";
+		const groups = findDuplicates(complexity, { normalized });
+		log(`Found ${groups.length} duplicate group(s)`);
+		const version = getLocalVersion();
+		const output =
+			options.format === "json"
+				? formatDuplicatesJson(groups, version)
+				: options.format === "github"
+					? formatDuplicatesGithub(groups)
+					: formatDuplicatesHuman(groups, {
+							rootPath: resolve(options.path),
+							noColor: options.noColor,
+						});
+		if (options.output) {
+			writeFileSync(resolve(options.output), `${output}\n`, "utf-8");
+		} else {
+			console.log(output);
+		}
+		const updateMessage = await updatePromise;
+		if (updateMessage) console.error(`\n${updateMessage}\n`);
+		// ponytail: report-only — doesn't reuse --fail-above (that gates CRAP
+		// scores). Add a dedicated --fail-on-duplicates if CI gating is wanted.
+		return { watchedPaths, exitCode: 0 };
+	}
+
+	// AI-slop smell detection. Also coverage-independent — short-circuit here.
+	if (options.smells) {
+		const rows = collectSmells(complexity, resolveKinds(options.smellKinds));
+		log(`Found smells in ${rows.length} function(s)`);
+		const version = getLocalVersion();
+		const output =
+			options.format === "json"
+				? formatSmellsJson(rows, version)
+				: options.format === "github"
+					? formatSmellsGithub(rows)
+					: formatSmellsHuman(rows, {
+							rootPath: resolve(options.path),
+							noColor: options.noColor,
+						});
+		if (options.output) {
+			writeFileSync(resolve(options.output), `${output}\n`, "utf-8");
+		} else {
+			console.log(output);
+		}
+		const updateMessage = await updatePromise;
+		if (updateMessage) console.error(`\n${updateMessage}\n`);
+		// ponytail: report-only. Add --fail-on-smells for CI gating if wanted.
+		return { watchedPaths, exitCode: 0 };
+	}
+
+	// Combined report: all coverage-independent AST checks in one pass. Built
+	// for pre-commit hooks (pair with --changed to scope to staged files).
+	if (options.checks) {
+		const version = getLocalVersion();
+		const dups = findDuplicates(complexity);
+		const smellRows = collectSmells(
+			complexity,
+			resolveKinds(options.smellKinds),
+		);
+		const dead = await findDeadImports(
+			allFiles.map((f) => f.path),
+			resolveTsPath(resolve(options.path)),
+		);
+		log(
+			`checks: ${dups.length} dup group(s), ${smellRows.length} smelly fn(s), ${dead.length} dead import(s)`,
+		);
+
+		let output: string;
+		if (options.format === "json") {
+			output = JSON.stringify(
+				{
+					version,
+					duplicates: dups,
+					smells: smellRows,
+					deadImports: dead,
+				},
+				null,
+				2,
+			);
+		} else if (options.format === "github") {
+			output = [
+				formatDuplicatesGithub(dups),
+				formatSmellsGithub(smellRows),
+				formatDeadCodeGithub(dead),
+			]
+				.filter(Boolean)
+				.join("\n");
+		} else {
+			const rootPath = resolve(options.path);
+			const nc = options.noColor;
+			output = [
+				"━━ Duplicates ━━",
+				formatDuplicatesHuman(dups, { rootPath, noColor: nc }),
+				"\n━━ Smells ━━",
+				formatSmellsHuman(smellRows, { rootPath, noColor: nc }),
+				"\n━━ Dead code ━━",
+				formatDeadCodeHuman(dead, { rootPath, noColor: nc }),
+			].join("\n");
+		}
+
+		if (options.output) {
+			writeFileSync(resolve(options.output), `${output}\n`, "utf-8");
+		} else {
+			console.log(output);
+		}
+		const updateMessage = await updatePromise;
+		if (updateMessage) console.error(`\n${updateMessage}\n`);
+		// ponytail: report-only so it never blocks a commit. Add --fail-on-checks
+		// if a gating hook is wanted.
+		return { watchedPaths, exitCode: 0 };
+	}
 
 	// Attach package info to complexity entries
 	const fileToPackage = new Map(allFiles.map((f) => [f.path, f.package]));
