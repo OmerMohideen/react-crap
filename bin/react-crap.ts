@@ -74,8 +74,12 @@ program
 		"Run all coverage-free checks (duplicates + smells + dead code) in one report. Pair with --changed for pre-commit hooks",
 	)
 	.option(
+		"--audit-deps",
+		"Scan dependencies for known vulnerabilities via `npm audit` (no coverage/source needed)",
+	)
+	.option(
 		"--fail-on-findings",
-		"Exit 1 if any coverage-free check (--checks/--smells/--duplicates/--dead-code) reports a finding",
+		"Exit 1 if any coverage-free check (--checks/--smells/--duplicates/--dead-code/--audit-deps) reports a finding",
 	)
 	.option(
 		"--sort <fields>",
@@ -123,6 +127,7 @@ run({
 	smellKinds: typeof options.smells === "string" ? options.smells : undefined,
 	deadCode: options.deadCode ?? false,
 	checks: options.checks ?? false,
+	auditDeps: options.auditDeps ?? false,
 	failOnFindings: options.failOnFindings ?? false,
 	sort: options.sort,
 	output: options.output,

@@ -65,6 +65,24 @@ describe("passthrough + test-no-assert", () => {
 		);
 	});
 
+	it("flags perf/best-practice/security kinds, but not a top-level component", async () => {
+		const f = resolve("test/fixtures/smells/perf-sec.tsx");
+		const result = await analyzeComplexity([f]);
+		const all = new Set(result.flatMap((r) => r.smells.map((s) => s.kind)));
+		expect(all).toContain("component-in-render");
+		expect(all).toContain("var-keyword");
+		expect(all).toContain("loose-equality");
+		expect(all).toContain("eval-usage");
+		expect(all).toContain("dangerous-html");
+
+		// The nested Child is flagged on its parent; the standalone Sibling isn't.
+		const flaggedNames = result
+			.filter((r) => r.smells.some((s) => s.kind === "component-in-render"))
+			.map((r) => r.function);
+		expect(flaggedNames).toContain("Parent");
+		expect(flaggedNames).not.toContain("Sibling");
+	});
+
 	it("flags an it() with no expect, but not one with expect", async () => {
 		const f = resolve("test/fixtures/smells/faketests.test.tsx");
 		const result = await analyzeComplexity([f]);

@@ -2,6 +2,12 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import picomatch from "picomatch";
+import {
+	formatAuditGithub,
+	formatAuditHuman,
+	formatAuditJson,
+	runAudit,
+} from "./audit.js";
 import { hashFile, loadCache, saveCache } from "./cache.js";
 import { analyzeComplexity } from "./complexity.js";
 import { loadConfig } from "./config.js";
@@ -72,6 +78,7 @@ export interface RunOptions {
 	smellKinds?: string;
 	deadCode?: boolean;
 	checks?: boolean;
+	auditDeps?: boolean;
 	failOnFindings?: boolean;
 }
 
@@ -202,6 +209,7 @@ async function runOnce(
 		smellKinds: rawOptions.smellKinds,
 		deadCode: rawOptions.deadCode ?? false,
 		checks: rawOptions.checks ?? false,
+		auditDeps: rawOptions.auditDeps ?? false,
 		failOnFindings: rawOptions.failOnFindings || config.failOnFindings || false,
 	};
 
@@ -214,7 +222,11 @@ async function runOnce(
 	// does something useful instead of erroring. An explicit --lcov still falls
 	// through to the coverage read (which reports a clear error if it's missing).
 	const anyCheckMode =
-		options.duplicates || options.smells || options.deadCode || options.checks;
+		options.duplicates ||
+		options.smells ||
+		options.deadCode ||
+		options.checks ||
+		options.auditDeps;
 	if (
 		!anyCheckMode &&
 		rawOptions.lcov === undefined &&
@@ -230,6 +242,31 @@ async function runOnce(
 
 	if (!["pessimistic", "optimistic", "skip"].includes(options.missing)) {
 		throw new Error(`Invalid --missing policy: ${options.missing}`);
+	}
+
+	// Dependency audit: source-independent (scans the lockfile, not .ts files),
+	// so short-circuit before any file walking or coverage parsing.
+	if (options.auditDeps) {
+		const vulns = runAudit(resolve(options.path));
+		log(`npm audit: ${vulns.length} vulnerable dependency(ies)`);
+		const version = getLocalVersion();
+		const output =
+			options.format === "json"
+				? formatAuditJson(vulns, version)
+				: options.format === "github"
+					? formatAuditGithub(vulns)
+					: formatAuditHuman(vulns, { noColor: options.noColor });
+		if (options.output) {
+			writeFileSync(resolve(options.output), `${output}\n`, "utf-8");
+		} else {
+			console.log(output);
+		}
+		const updateMessage = await updatePromise;
+		if (updateMessage) console.error(`\n${updateMessage}\n`);
+		return {
+			watchedPaths,
+			exitCode: options.failOnFindings && vulns.length > 0 ? 1 : 0,
+		};
 	}
 
 	// Determine paths to analyze

@@ -42,6 +42,11 @@ function allKindsExcept(exclude: SmellKind[]): SmellKind[] {
 		"index-as-key",
 		"passthrough-wrapper",
 		"test-no-assert",
+		"component-in-render",
+		"dangerous-html",
+		"eval-usage",
+		"loose-equality",
+		"var-keyword",
 	];
 	const ex = new Set(exclude);
 	return all.filter((k) => !ex.has(k));
@@ -79,6 +84,9 @@ const BUG_KINDS = new Set<SmellKind>([
 	"effect-missing-cleanup",
 	"index-as-key",
 	"test-no-assert",
+	"component-in-render",
+	"dangerous-html",
+	"eval-usage",
 ]);
 const HOUSEKEEPING_KINDS = new Set<SmellKind>([
 	"console",

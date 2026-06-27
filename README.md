@@ -117,7 +117,8 @@ Example output:
 | `--smells [kinds]` | — | Report AI-slop smells instead of CRAP scores. No coverage needed. Noisy `any`/`!` excluded by default; pass `all` or a comma list of kinds. See [Code-review checks](#code-review-checks-no-coverage). |
 | `--dead-code` | — | Report unused imports instead of CRAP scores. No coverage needed. |
 | `--checks` | — | Run **all** coverage-free checks (duplicates + smells + dead code) in one report. Pair with `--changed` for pre-commit hooks. |
-| `--fail-on-findings` | off | Exit 1 if any coverage-free check (`--checks` / `--smells` / `--duplicates` / `--dead-code`) reports a finding. The CI gate for the checks, mirroring `--fail-above` for CRAP scores. |
+| `--audit-deps` | — | Scan dependencies for known vulnerabilities via `npm audit` (no coverage or source needed). Reads `package-lock.json`; npm projects only. Report-only unless `--fail-on-findings`. Kept out of `--checks` (network + slow). |
+| `--fail-on-findings` | off | Exit 1 if any coverage-free check (`--checks` / `--smells` / `--duplicates` / `--dead-code` / `--audit-deps`) reports a finding. The CI gate for the checks, mirroring `--fail-above` for CRAP scores. |
 
 ### Filtering order
 
@@ -310,9 +311,20 @@ npx react-crap --dead-code
 
 # Everything above in one report.
 npx react-crap --checks
+
+# Known-vulnerable dependencies (wraps `npm audit`; needs package-lock.json).
+npx react-crap --audit-deps
+npx react-crap --audit-deps --fail-on-findings   # exit 1 if any vuln found
 ```
 
-Smell kinds: `effect-missing-deps`, `effect-missing-cleanup`, `effect-derived-state`, `unstable-prop`, `index-as-key`, `passthrough-wrapper`, `test-no-assert`, `as-any`, `non-null-assertion`, `type-any`, `ts-suppress`, `console`, `todo`, `placeholder`. In the human report kinds are colored by severity (red = likely bug, yellow = quality, dim = housekeeping).
+Smell kinds: `effect-missing-deps`, `effect-missing-cleanup`, `effect-derived-state`, `unstable-prop`, `component-in-render`, `index-as-key`, `passthrough-wrapper`, `test-no-assert`, `dangerous-html`, `eval-usage`, `loose-equality`, `var-keyword`, `as-any`, `non-null-assertion`, `type-any`, `ts-suppress`, `console`, `todo`, `placeholder`. In the human report kinds are colored by severity (red = likely bug, yellow = quality, dim = housekeeping).
+
+By category:
+
+- **Performance** — `unstable-prop` (inline object/array/function props), `component-in-render` (nested component remounts every render), `index-as-key`.
+- **Security** (source patterns) — `dangerous-html` (`dangerouslySetInnerHTML` / XSS), `eval-usage` (`eval` / `new Function`).
+- **Best practice** — `loose-equality` (`==`/`!=`), `var-keyword`, `passthrough-wrapper`, `test-no-assert`.
+- **State & effects** — `effect-missing-deps`, `effect-missing-cleanup`, `effect-derived-state`.
 
 All three are **report-only by default** — they print findings and exit 0, so they never block. Add `--fail-on-findings` to exit 1 when anything is found (CI gate), or `--format json` for machine output.
 

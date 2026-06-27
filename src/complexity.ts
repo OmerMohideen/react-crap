@@ -15,7 +15,12 @@ export type SmellKind =
 	| "placeholder"
 	| "index-as-key"
 	| "passthrough-wrapper"
-	| "test-no-assert";
+	| "test-no-assert"
+	| "component-in-render"
+	| "dangerous-html"
+	| "eval-usage"
+	| "loose-equality"
+	| "var-keyword";
 
 export interface Smell {
 	kind: SmellKind;
@@ -560,6 +565,16 @@ async function analyzeFile(
 		]);
 		function checkJsxAttr(attr: any) {
 			const attrName = tsMod.isIdentifier(attr.name) ? attr.name.text : "";
+
+			if (attrName === "dangerouslySetInnerHTML") {
+				smells.push({
+					kind: "dangerous-html",
+					detail: "dangerouslySetInnerHTML (XSS risk — sanitize the HTML)",
+					line: lineOf(attr),
+				});
+				return;
+			}
+
 			const init = attr.initializer;
 			if (!init || !tsMod.isJsxExpression(init) || !init.expression) return;
 			const expr = init.expression;
@@ -593,14 +608,58 @@ async function analyzeFile(
 			}
 		}
 
+		// PascalCase name of a function node (from its own name or its variable
+		// declaration) — i.e. it looks like a React component, not a handler.
+		const pascalName = (n: any): string | undefined => {
+			if (
+				tsMod.isFunctionDeclaration(n) &&
+				n.name &&
+				/^[A-Z]/.test(n.name.text)
+			)
+				return n.name.text;
+			const p = n.parent;
+			if (
+				p &&
+				tsMod.isVariableDeclaration(p) &&
+				tsMod.isIdentifier(p.name) &&
+				/^[A-Z]/.test(p.name.text)
+			)
+				return p.name.text;
+			return undefined;
+		};
+		const outerIsComponent = detectComponent(fnNode, sourceFile, tsMod);
+
 		// Walk own body; do not descend into nested functions (separate entries).
 		(function walk(node: any) {
-			if (node !== fnNode && isFn(node)) return;
+			if (node !== fnNode && isFn(node)) {
+				// A component defined inside another component is remounted (state
+				// lost, subtree torn down) on every render of the parent.
+				const nm = pascalName(node);
+				if (
+					nm &&
+					outerIsComponent &&
+					detectComponent(node, sourceFile, tsMod)
+				) {
+					smells.push({
+						kind: "component-in-render",
+						detail: `component "${nm}" defined inside another component (remounts every render)`,
+						line: lineOf(node),
+					});
+				}
+				return;
+			}
 
 			if (tsMod.isCallExpression(node)) {
 				const name = calleeName(node.expression);
 				if (name === "useEffect" || name === "useLayoutEffect")
 					analyzeEffect(node);
+				if (name === "eval") {
+					smells.push({
+						kind: "eval-usage",
+						detail: "eval() — code injection / XSS risk",
+						line: lineOf(node),
+					});
+				}
 				if (
 					tsMod.isPropertyAccessExpression(node.expression) &&
 					tsMod.isIdentifier(node.expression.expression) &&
@@ -612,6 +671,44 @@ async function analyzeFile(
 						line: lineOf(node),
 					});
 				}
+			}
+			if (
+				tsMod.isNewExpression(node) &&
+				tsMod.isIdentifier(node.expression) &&
+				node.expression.text === "Function"
+			) {
+				smells.push({
+					kind: "eval-usage",
+					detail: "new Function() — dynamic code execution risk",
+					line: lineOf(node),
+				});
+			}
+			if (tsMod.isBinaryExpression(node)) {
+				const op = node.operatorToken.kind;
+				if (op === tsMod.SyntaxKind.EqualsEqualsToken) {
+					smells.push({
+						kind: "loose-equality",
+						detail: "loose equality `==` (use `===`)",
+						line: lineOf(node),
+					});
+				} else if (op === tsMod.SyntaxKind.ExclamationEqualsToken) {
+					smells.push({
+						kind: "loose-equality",
+						detail: "loose inequality `!=` (use `!==`)",
+						line: lineOf(node),
+					});
+				}
+			}
+			if (
+				tsMod.isVariableDeclarationList(node) &&
+				(node.flags & tsMod.NodeFlags.Let) === 0 &&
+				(node.flags & tsMod.NodeFlags.Const) === 0
+			) {
+				smells.push({
+					kind: "var-keyword",
+					detail: "`var` declaration (use `const`/`let`)",
+					line: lineOf(node),
+				});
 			}
 			if (tsMod.isJsxAttribute(node)) checkJsxAttr(node);
 			if (node.kind === tsMod.SyntaxKind.AnyKeyword) {
