@@ -1,0 +1,22 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "https://raw.githubusercontent.com/OmerMohideen/react-crap/master/schemas/dead-code-v1.json",
+	"type": "object",
+	"required": ["version", "deadImports"],
+	"properties": {
+		"$schema": { "type": "string" },
+		"version": { "type": "string" },
+		"deadImports": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"required": ["file", "name", "line"],
+				"properties": {
+					"file": { "type": "string" },
+					"name": { "type": "string" },
+					"line": { "type": "integer" }
+				}
+			}
+		}
+	}
+}

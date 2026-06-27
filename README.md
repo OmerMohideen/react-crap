@@ -199,6 +199,13 @@ Complexity analysis results are cached in `.react-crap-cache.json` (created next
 |---------|--------|
 | Absolute (no `--baseline`) | [`schemas/report-v1.json`](https://raw.githubusercontent.com/OmerMohideen/react-crap/master/schemas/report-v1.json) |
 | Delta (with `--baseline`) | [`schemas/delta-v2.json`](https://raw.githubusercontent.com/OmerMohideen/react-crap/master/schemas/delta-v2.json) |
+| `--smells` | [`schemas/smells-v1.json`](https://raw.githubusercontent.com/OmerMohideen/react-crap/master/schemas/smells-v1.json) |
+| `--duplicates` | [`schemas/duplicates-v1.json`](https://raw.githubusercontent.com/OmerMohideen/react-crap/master/schemas/duplicates-v1.json) |
+| `--dead-code` | [`schemas/dead-code-v1.json`](https://raw.githubusercontent.com/OmerMohideen/react-crap/master/schemas/dead-code-v1.json) |
+| `--checks` | [`schemas/checks-v1.json`](https://raw.githubusercontent.com/OmerMohideen/react-crap/master/schemas/checks-v1.json) |
+| `--audit-deps` | [`schemas/audit-v1.json`](https://raw.githubusercontent.com/OmerMohideen/react-crap/master/schemas/audit-v1.json) |
+
+Every coverage-free check's `--format json` output carries a `$schema` URL pointing at the matching schema above.
 
 ```json
 // react-crap --format json

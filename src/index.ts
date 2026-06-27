@@ -36,6 +36,7 @@ import { formatDeltaJson, formatJson } from "./report/json.js";
 import { formatMarkdown } from "./report/markdown.js";
 import { formatPrComment } from "./report/pr-comment.js";
 import { formatSarif } from "./report/sarif.js";
+import { schemaUrl } from "./report/schema.js";
 import { filter, score, sortEntries } from "./score.js";
 import {
 	collectSmells,
@@ -535,6 +536,7 @@ async function runOnce(
 		if (options.format === "json") {
 			output = JSON.stringify(
 				{
+					$schema: schemaUrl("checks-v1.json"),
 					version,
 					duplicates: dups,
 					smells: smellRows,

@@ -8,6 +8,7 @@ import {
 	type SmellKind,
 } from "./complexity.js";
 import { banner, type SeverityCounts, scoreFooter } from "./report/health.js";
+import { schemaUrl } from "./report/schema.js";
 
 export interface SmellRow {
 	file: string;
@@ -229,7 +230,12 @@ export function formatSmellsGithub(rows: SmellRow[]): string {
 
 export function formatSmellsJson(rows: SmellRow[], version: string): string {
 	return JSON.stringify(
-		{ version, counts: countByKind(rows), smells: rows },
+		{
+			$schema: schemaUrl("smells-v1.json"),
+			version,
+			counts: countByKind(rows),
+			smells: rows,
+		},
 		null,
 		2,
 	);

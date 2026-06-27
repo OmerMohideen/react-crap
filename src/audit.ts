@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import Table from "cli-table3";
 import pc from "picocolors";
 import { banner, type SeverityCounts, scoreFooter } from "./report/health.js";
+import { schemaUrl } from "./report/schema.js";
 
 export interface Vuln {
 	name: string;
@@ -176,5 +177,9 @@ export function formatAuditGithub(vulns: Vuln[]): string {
 }
 
 export function formatAuditJson(vulns: Vuln[], version: string): string {
-	return JSON.stringify({ version, vulnerabilities: vulns }, null, 2);
+	return JSON.stringify(
+		{ $schema: schemaUrl("audit-v1.json"), version, vulnerabilities: vulns },
+		null,
+		2,
+	);
 }

@@ -2,6 +2,7 @@ import { relative } from "node:path";
 import Table from "cli-table3";
 import pc from "picocolors";
 import type { ComplexityEntry } from "./complexity.js";
+import { schemaUrl } from "./report/schema.js";
 
 export interface DuplicateMember {
 	file: string;
@@ -147,5 +148,9 @@ export function formatDuplicatesJson(
 	groups: DuplicateGroup[],
 	version: string,
 ): string {
-	return JSON.stringify({ version, duplicates: groups }, null, 2);
+	return JSON.stringify(
+		{ $schema: schemaUrl("duplicates-v1.json"), version, duplicates: groups },
+		null,
+		2,
+	);
 }

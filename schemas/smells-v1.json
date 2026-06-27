@@ -1,0 +1,38 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "https://raw.githubusercontent.com/OmerMohideen/react-crap/master/schemas/smells-v1.json",
+	"type": "object",
+	"required": ["version", "counts", "smells"],
+	"properties": {
+		"$schema": { "type": "string" },
+		"version": { "type": "string" },
+		"counts": {
+			"type": "object",
+			"additionalProperties": { "type": "integer" }
+		},
+		"smells": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"required": ["file", "function", "line", "smells"],
+				"properties": {
+					"file": { "type": "string" },
+					"function": { "type": "string" },
+					"line": { "type": "integer" },
+					"smells": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"required": ["kind", "detail", "line"],
+							"properties": {
+								"kind": { "type": "string" },
+								"detail": { "type": "string" },
+								"line": { "type": "integer" }
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}

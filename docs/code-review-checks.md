@@ -124,7 +124,7 @@ It is kept out of `--checks` and zero-config because it hits the network and is 
 
 `--format json` and `--format github` work with every check mode:
 
-- `json` — machine-readable; pipe into your own dashboard or gate
+- `json` — machine-readable; pipe into your own dashboard or gate. Each mode's JSON carries a `$schema` URL (`smells-v1`, `duplicates-v1`, `dead-code-v1`, `checks-v1`, `audit-v1`) for offline validation or type generation.
 - `github` — `::warning file=…,line=…` annotations that render inline on the PR diff (GitHub Actions)
 
 See [CI Integration](./ci-integration.md) for workflow examples.
