@@ -120,6 +120,22 @@ npx react-crap --audit-deps --fail-on-findings   # exit 1 on any vuln
 
 It is kept out of `--checks` and zero-config because it hits the network and is slower than the source checks.
 
+## Health score
+
+Every check report ends with a health score (0–100): `100 − (8·high + 3·warn + 1·note)`, clamped. Two flags expose it directly:
+
+```bash
+npx react-crap --score              # print only the score line (human)
+npx react-crap --score --format json # { "score": 82, "counts": {...} }
+npx react-crap --min-score 80        # exit 1 if the score is below 80 (CI gate)
+```
+
+Both run the combined `--checks`. `--min-score` is a score gate, complementary to `--fail-on-findings` (which fails on *any* finding).
+
+## Watch mode
+
+`--watch` works with the checks too — `--checks --watch` re-runs the coverage-free report whenever a source file changes. Press Ctrl+C to stop.
+
 ## Output formats
 
 `--format json` and `--format github` work with every check mode:

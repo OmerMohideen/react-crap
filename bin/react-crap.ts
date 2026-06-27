@@ -78,6 +78,14 @@ program
 		"Scan dependencies for known vulnerabilities via `npm audit` (no coverage/source needed)",
 	)
 	.option(
+		"--score",
+		"Run the coverage-free checks and print only the health score (0-100)",
+	)
+	.option(
+		"--min-score <n>",
+		"Exit 1 if the coverage-free health score is below N (gate on score)",
+	)
+	.option(
 		"--fail-on-findings",
 		"Exit 1 if any coverage-free check (--checks/--smells/--duplicates/--dead-code/--audit-deps) reports a finding",
 	)
@@ -129,6 +137,8 @@ run({
 	checks: options.checks ?? false,
 	auditDeps: options.auditDeps ?? false,
 	failOnFindings: options.failOnFindings ?? false,
+	score: options.score ?? false,
+	minScore: options.minScore ? parseFloat(options.minScore) : undefined,
 	sort: options.sort,
 	output: options.output,
 	noColor,

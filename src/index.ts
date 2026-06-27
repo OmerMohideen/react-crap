@@ -29,7 +29,7 @@ import { getChangedFiles } from "./git.js";
 import { isLineChanged, safeChangedRanges } from "./git-diff.js";
 import { merge } from "./merge.js";
 import { formatGithub } from "./report/github.js";
-import { banner, scoreFooter } from "./report/health.js";
+import { banner, healthScore, scoreFooter } from "./report/health.js";
 import { formatHtml } from "./report/html.js";
 import { formatHuman } from "./report/human.js";
 import { formatDeltaJson, formatJson } from "./report/json.js";
@@ -83,6 +83,8 @@ export interface RunOptions {
 	checks?: boolean;
 	auditDeps?: boolean;
 	failOnFindings?: boolean;
+	score?: boolean;
+	minScore?: number;
 }
 
 export async function run(rawOptions: RunOptions): Promise<void> {
@@ -214,7 +216,21 @@ async function runOnce(
 		checks: rawOptions.checks ?? false,
 		auditDeps: rawOptions.auditDeps ?? false,
 		failOnFindings: rawOptions.failOnFindings || config.failOnFindings || false,
+		score: rawOptions.score ?? false,
+		minScore: rawOptions.minScore ?? config.minScore,
 	};
+
+	// --score / --min-score run on the combined coverage-free checks.
+	const wantsScore = options.score || options.minScore !== undefined;
+	if (
+		wantsScore &&
+		!options.duplicates &&
+		!options.smells &&
+		!options.deadCode &&
+		!options.auditDeps
+	) {
+		options.checks = true;
+	}
 
 	const log = (message: string) => {
 		if (options.verbose) console.error(`[react-crap] ${message}`);
@@ -532,8 +548,30 @@ async function runOnce(
 			`checks: ${dups.length} dup group(s), ${smellRows.length} smelly fn(s), ${dead.length} dead import(s)`,
 		);
 
+		// Combined severity: smell buckets + each dup group as a warning and each
+		// dead import as a note. Drives both the footer and the score gate.
+		const sev = smellSeverityCounts(smellRows, config.rules);
+		sev.warn += dups.length;
+		sev.note += dead.length;
+		const score = healthScore(sev);
+
 		let output: string;
-		if (options.format === "json") {
+		if (options.score) {
+			// Score-only: a single number for badges / quick gates.
+			output =
+				options.format === "json"
+					? JSON.stringify(
+							{
+								$schema: schemaUrl("checks-v1.json"),
+								version,
+								score,
+								counts: sev,
+							},
+							null,
+							2,
+						)
+					: scoreFooter(sev, options.noColor);
+		} else if (options.format === "json") {
 			output = JSON.stringify(
 				{
 					$schema: schemaUrl("checks-v1.json"),
@@ -556,11 +594,6 @@ async function runOnce(
 		} else {
 			const rootPath = resolve(options.path);
 			const nc = options.noColor;
-			// Combined severity: smell buckets + each dup group as a warning and
-			// each dead import as a note.
-			const sev = smellSeverityCounts(smellRows, config.rules);
-			sev.warn += dups.length;
-			sev.note += dead.length;
 			output = [
 				banner("checks", nc),
 				"━━ Duplicates ━━",
@@ -587,9 +620,12 @@ async function runOnce(
 		const updateMessage = await updatePromise;
 		if (updateMessage) console.error(`\n${updateMessage}\n`);
 		const findings = dups.length + smellRows.length + dead.length;
+		const failFindings = options.failOnFindings && findings > 0;
+		const failScore =
+			options.minScore !== undefined && score < options.minScore;
 		return {
 			watchedPaths,
-			exitCode: options.failOnFindings && findings > 0 ? 1 : 0,
+			exitCode: failFindings || failScore ? 1 : 0,
 		};
 	}
 

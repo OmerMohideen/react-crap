@@ -188,6 +188,36 @@ describe("integration", () => {
 		}
 	});
 
+	it("--score prints a numeric health score in JSON", async () => {
+		const out = await captureRun({
+			...checksBase,
+			path: resolve("test/fixtures/smells"),
+			format: "json",
+			score: true,
+		});
+		const parsed = JSON.parse(out);
+		expect(typeof parsed.score).toBe("number");
+		expect(parsed.score).toBeGreaterThanOrEqual(0);
+		expect(parsed.score).toBeLessThanOrEqual(100);
+	});
+
+	it("--min-score exits 1 when the score is below the threshold", async () => {
+		const exitSpy = vi
+			.spyOn(process, "exit")
+			.mockImplementation((() => undefined) as any);
+		try {
+			await captureRun({
+				...checksBase,
+				path: resolve("test/fixtures/smells"),
+				format: "json",
+				minScore: 100, // fixtures have smells, so score < 100
+			});
+			expect(exitSpy).toHaveBeenCalledWith(1);
+		} finally {
+			exitSpy.mockRestore();
+		}
+	});
+
 	it("includes React-aware fields in JSON and human output", async () => {
 		const fixturePath = resolve("test/fixtures/sample");
 		const lcovPath = resolve(fixturePath, "coverage/lcov.info");
