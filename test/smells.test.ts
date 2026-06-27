@@ -2,7 +2,12 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { ComplexityEntry, SmellKind } from "../src/complexity";
 import { analyzeComplexity } from "../src/complexity";
-import { collectSmells, countByKind, effectiveKinds } from "../src/smells";
+import {
+	collectSmells,
+	countByKind,
+	effectiveKinds,
+	resolveSeverity,
+} from "../src/smells";
 
 const fixture = resolve("test/fixtures/smells/slop.tsx");
 
@@ -92,6 +97,9 @@ describe("passthrough + test-no-assert", () => {
 		expect(all).toContain("target-blank");
 		expect(all).toContain("href-javascript");
 		expect(all).toContain("positive-tabindex");
+		expect(all).toContain("redundant-role");
+		expect(all).toContain("no-autofocus");
+		expect(all).toContain("label-no-control");
 	});
 
 	it("flags an it() with no expect, but not one with expect", async () => {
@@ -136,5 +144,28 @@ describe("effectiveKinds (rule customization)", () => {
 			effectiveKinds().map((kind) => [kind, false]),
 		);
 		expect(effectiveKinds(undefined, rules)).toEqual([]);
+	});
+
+	it("a severity-string value force-enables the kind", () => {
+		expect(effectiveKinds(undefined, { "type-any": "warn" })).toContain(
+			"type-any",
+		);
+	});
+});
+
+describe("resolveSeverity", () => {
+	it("uses the static bucket by default", () => {
+		expect(resolveSeverity("dangerous-html")).toBe("high"); // BUG kind
+		expect(resolveSeverity("console")).toBe("note"); // housekeeping
+		expect(resolveSeverity("loose-equality")).toBe("warn"); // default
+	});
+
+	it("lets config override the severity", () => {
+		expect(
+			resolveSeverity("loose-equality", { "loose-equality": "error" }),
+		).toBe("high");
+		expect(
+			resolveSeverity("dangerous-html", { "dangerous-html": "note" }),
+		).toBe("note");
 	});
 });

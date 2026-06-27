@@ -26,7 +26,10 @@ export type SmellKind =
 	| "anchor-no-href"
 	| "positive-tabindex"
 	| "target-blank"
-	| "href-javascript";
+	| "href-javascript"
+	| "redundant-role"
+	| "no-autofocus"
+	| "label-no-control";
 
 // Canonical list of every smell kind — single source of truth shared by the
 // smell engine, the default-set logic, and config validation.
@@ -56,6 +59,9 @@ export const ALL_SMELL_KINDS: SmellKind[] = [
 	"positive-tabindex",
 	"target-blank",
 	"href-javascript",
+	"redundant-role",
+	"no-autofocus",
+	"label-no-control",
 ];
 
 export interface Smell {
@@ -63,6 +69,27 @@ export interface Smell {
 	detail: string;
 	line: number;
 }
+
+// Implicit ARIA roles for common intrinsic elements — used to flag a `role`
+// attribute that just restates the element's built-in role. Conservative set
+// (only unambiguous mappings; `a` → link handled separately, needs href).
+const IMPLICIT_ROLE: Record<string, string> = {
+	button: "button",
+	nav: "navigation",
+	main: "main",
+	ul: "list",
+	ol: "list",
+	li: "listitem",
+	table: "table",
+	form: "form",
+	img: "img",
+	h1: "heading",
+	h2: "heading",
+	h3: "heading",
+	h4: "heading",
+	h5: "heading",
+	h6: "heading",
+};
 
 // Parse .ts as TS (not TSX) so generic arrows `const f = <T>(x) =>` aren't
 // misread as JSX. Only .tsx/.jsx get the JSX grammar.
@@ -737,6 +764,53 @@ async function analyzeFile(
 					smells.push({
 						kind: "positive-tabindex",
 						detail: `tabIndex={${v}} disrupts natural tab order (use 0 or -1)`,
+						line,
+					});
+				}
+			}
+
+			// autoFocus steals focus on mount — disorienting for AT users.
+			if (get("autoFocus")) {
+				smells.push({
+					kind: "no-autofocus",
+					detail: "autoFocus prop (steals focus on mount — a11y)",
+					line,
+				});
+			}
+
+			// role that duplicates the element's implicit ARIA role is redundant.
+			const roleAttr = get("role");
+			const roleVal = roleAttr && attrString(roleAttr);
+			if (roleVal) {
+				const implicit =
+					IMPLICIT_ROLE[tagName] ??
+					(tagName === "a" && get("href") ? "link" : undefined);
+				if (implicit && roleVal === implicit) {
+					smells.push({
+						kind: "redundant-role",
+						detail: `role="${roleVal}" is the implicit role of <${tagName}>`,
+						line,
+					});
+				}
+			}
+
+			// <label> with no htmlFor and no nested element can't be associated
+			// with a control. Conservative: text-only labels only (skip if any
+			// child element might be the control).
+			if (tagName === "label" && !get("htmlFor") && !spread) {
+				const parent = el.parent;
+				const kids =
+					parent && tsMod.isJsxElement(parent) ? (parent.children ?? []) : [];
+				const hasElementChild = kids.some(
+					(k: any) =>
+						tsMod.isJsxElement(k) ||
+						tsMod.isJsxSelfClosingElement(k) ||
+						tsMod.isJsxExpression(k),
+				);
+				if (!hasElementChild) {
+					smells.push({
+						kind: "label-no-control",
+						detail: "<label> has no htmlFor and no nested control (a11y)",
 						line,
 					});
 				}

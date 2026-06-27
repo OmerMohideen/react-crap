@@ -495,6 +495,7 @@ async function runOnce(
 					: formatSmellsHuman(rows, {
 							rootPath: resolve(options.path),
 							noColor: options.noColor,
+							rules: config.rules,
 						});
 		if (options.output) {
 			writeFileSync(resolve(options.output), `${output}\n`, "utf-8");
@@ -555,7 +556,7 @@ async function runOnce(
 			const nc = options.noColor;
 			// Combined severity: smell buckets + each dup group as a warning and
 			// each dead import as a note.
-			const sev = smellSeverityCounts(smellRows);
+			const sev = smellSeverityCounts(smellRows, config.rules);
 			sev.warn += dups.length;
 			sev.note += dead.length;
 			output = [
@@ -563,7 +564,12 @@ async function runOnce(
 				"━━ Duplicates ━━",
 				formatDuplicatesHuman(dups, { rootPath, noColor: nc }),
 				"\n━━ Smells ━━",
-				formatSmellsHuman(smellRows, { rootPath, noColor: nc, compact: true }),
+				formatSmellsHuman(smellRows, {
+					rootPath,
+					noColor: nc,
+					compact: true,
+					rules: config.rules,
+				}),
 				"\n━━ Dead code ━━",
 				formatDeadCodeHuman(dead, { rootPath, noColor: nc }),
 				"",

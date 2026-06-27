@@ -33,6 +33,10 @@ export function Markup() {
 			</a>
 			<a href="javascript:alert(1)">bad</a>
 			<span tabIndex={3}>t</span>
+			<button role="button" autoFocus>
+				Go
+			</button>
+			<label>Name</label>
 		</div>
 	);
 }

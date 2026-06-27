@@ -42,7 +42,7 @@ function allKindsExcept(exclude: SmellKind[]): SmellKind[] {
 // (disable). Returns the concrete kind list to scan.
 export function effectiveKinds(
 	filter?: string,
-	rules?: Record<string, boolean>,
+	rules?: Record<string, RuleValue>,
 ): SmellKind[] {
 	const base = resolveKinds(filter) ?? ALL_SMELL_KINDS;
 	if (!rules) return [...base];
@@ -101,28 +101,51 @@ const HOUSEKEEPING_KINDS = new Set<SmellKind>([
 	"placeholder",
 ]);
 
+// A config rule value: enable/disable, or enable with a severity override.
+export type RuleValue = boolean | "error" | "warn" | "note";
+
+// Display severity of a kind: a config "error"/"warn"/"note" override wins,
+// otherwise the static bucket (BUG → high, housekeeping → note, else warn).
+export function resolveSeverity(
+	kind: SmellKind,
+	rules?: Record<string, RuleValue>,
+): "high" | "warn" | "note" {
+	const ov = rules?.[kind];
+	if (ov === "error") return "high";
+	if (ov === "warn") return "warn";
+	if (ov === "note") return "note";
+	if (BUG_KINDS.has(kind)) return "high";
+	if (HOUSEKEEPING_KINDS.has(kind)) return "note";
+	return "warn";
+}
+
 // Collapse smell kinds into the three display severities for the score footer.
-export function smellSeverityCounts(rows: SmellRow[]): SeverityCounts {
+export function smellSeverityCounts(
+	rows: SmellRow[],
+	rules?: Record<string, RuleValue>,
+): SeverityCounts {
 	const c: SeverityCounts = { high: 0, warn: 0, note: 0 };
 	for (const r of rows) {
-		for (const s of r.smells) {
-			if (BUG_KINDS.has(s.kind)) c.high++;
-			else if (HOUSEKEEPING_KINDS.has(s.kind)) c.note++;
-			else c.warn++;
-		}
+		for (const s of r.smells) c[resolveSeverity(s.kind, rules)]++;
 	}
 	return c;
 }
 
 export function formatSmellsHuman(
 	rows: SmellRow[],
-	opts: { rootPath?: string; noColor?: boolean; compact?: boolean } = {},
+	opts: {
+		rootPath?: string;
+		noColor?: boolean;
+		compact?: boolean;
+		rules?: Record<string, RuleValue>;
+	} = {},
 ): string {
 	const id = (s: string) => s;
 	const c = opts.noColor ? { yellow: id, gray: id, red: id, dim: id } : pc;
 	const paintKind = (kind: string) => {
-		if (BUG_KINDS.has(kind as SmellKind)) return c.red(kind);
-		if (HOUSEKEEPING_KINDS.has(kind as SmellKind)) return c.dim(kind);
+		const sev = resolveSeverity(kind as SmellKind, opts.rules);
+		if (sev === "high") return c.red(kind);
+		if (sev === "note") return c.dim(kind);
 		return c.yellow(kind);
 	};
 	const loc = (file: string, line: number) =>
@@ -185,7 +208,7 @@ export function formatSmellsHuman(
 	return [
 		banner("smells", opts.noColor),
 		...lines,
-		scoreFooter(smellSeverityCounts(rows), opts.noColor),
+		scoreFooter(smellSeverityCounts(rows, opts.rules), opts.noColor),
 	].join("\n");
 }
 

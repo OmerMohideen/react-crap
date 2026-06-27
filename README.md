@@ -324,7 +324,7 @@ By category:
 - **State & effects** — `effect-missing-deps`, `effect-missing-cleanup`, `effect-derived-state`.
 - **Performance** — `unstable-prop` (inline object/array/function props), `component-in-render` (nested component remounts every render), `index-as-key`.
 - **Security** (source patterns) — `dangerous-html` (`dangerouslySetInnerHTML` / XSS), `eval-usage` (`eval` / `new Function`), `href-javascript` (`href="javascript:"`), `target-blank` (`target="_blank"` without `rel="noopener"`).
-- **Accessibility** — `img-no-alt`, `button-no-type`, `anchor-no-href`, `positive-tabindex`.
+- **Accessibility** — `img-no-alt`, `button-no-type`, `anchor-no-href`, `positive-tabindex`, `redundant-role`, `no-autofocus`, `label-no-control`.
 - **Best practice** — `loose-equality` (`==`/`!=`), `var-keyword`, `passthrough-wrapper`, `test-no-assert`.
 - **Type escapes / housekeeping** — `as-any`, `non-null-assertion`, `type-any`, `ts-suppress`, `console`, `todo`, `placeholder`.
 
@@ -332,14 +332,14 @@ By category:
 
 ### Customizing which rules run
 
-Set a `rules` map in `.react-crap.json` to force kinds on or off. `false` disables a kind; `true` force-enables one that's off by default. Applies to `--smells` and `--checks`. Unknown kind names are rejected.
+Set a `rules` map in `.react-crap.json` to customize kinds. Each maps to `false` (disable), `true` (force-enable, even a noisy default-off kind), or `"error"`/`"warn"`/`"note"` (force-enable and override its severity). Applies to `--smells` and `--checks`. Unknown kind names are rejected.
 
 ```json
 {
   "rules": {
-    "loose-equality": false,
+    "loose-equality": "error",
     "var-keyword": false,
-    "type-any": true
+    "type-any": "warn"
   }
 }
 ```

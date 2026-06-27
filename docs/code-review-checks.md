@@ -51,6 +51,9 @@ Kinds are colored by severity in the human report: **red** = likely bug, **yello
 - `button-no-type` — `<button>` with no `type` (defaults to `submit`)
 - `anchor-no-href` — `<a>` with no `href`
 - `positive-tabindex` — `tabIndex` > 0 (disrupts natural tab order)
+- `redundant-role` — `role` that restates the element's implicit ARIA role
+- `no-autofocus` — `autoFocus` prop (steals focus on mount)
+- `label-no-control` — `<label>` with no `htmlFor` and no nested control
 
 ### Best practice
 - `loose-equality` — `==` / `!=` instead of `===` / `!==`
@@ -77,14 +80,18 @@ Pick kinds for a single run on the CLI:
 npx react-crap --smells effect-missing-deps,index-as-key
 ```
 
-Or set persistent overrides in `.react-crap.json` with the `rules` map — `false` disables a kind, `true` force-enables an off-by-default one:
+Or set persistent overrides in `.react-crap.json` with the `rules` map. Each kind maps to:
+
+- `false` — disable the kind
+- `true` — force-enable (even an off-by-default noisy kind)
+- `"error"` / `"warn"` / `"note"` — force-enable **and** override its display severity (red / yellow / dim, and how it weighs the health score)
 
 ```json
 {
   "rules": {
-    "loose-equality": false,
+    "loose-equality": "error",
     "var-keyword": false,
-    "type-any": true
+    "type-any": "warn"
   }
 }
 ```

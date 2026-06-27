@@ -39,9 +39,10 @@ export interface Config {
 	verbose?: boolean;
 	watch?: boolean;
 	sort?: string;
-	// Per-smell-kind overrides: true = force-on (even noisy/deselected kinds),
-	// false = disable. Applies to --smells and --checks.
-	rules?: Partial<Record<SmellKind, boolean>>;
+	// Per-smell-kind overrides for --smells/--checks: true = force-on (even
+	// noisy/deselected kinds), false = disable, or "error"/"warn"/"note" to
+	// force-on with that display severity.
+	rules?: Partial<Record<SmellKind, boolean | "error" | "warn" | "note">>;
 }
 
 export function loadConfig(startDir: string): Config {
@@ -96,9 +97,14 @@ function validateConfig(config: Config, path: string): void {
 					`Unknown smell kind "${kind}" in "rules" (${path}). Valid kinds: ${ALL_SMELL_KINDS.join(", ")}`,
 				);
 			}
-			if (typeof value !== "boolean") {
+			const ok =
+				typeof value === "boolean" ||
+				value === "error" ||
+				value === "warn" ||
+				value === "note";
+			if (!ok) {
 				throw new ConfigValidationError(
-					`"rules.${kind}" in ${path} must be true or false, got ${typeof value}.`,
+					`"rules.${kind}" in ${path} must be true, false, or "error"/"warn"/"note", got ${JSON.stringify(value)}.`,
 				);
 			}
 		}
