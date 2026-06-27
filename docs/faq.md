@@ -40,6 +40,10 @@ This is **by design**. The formula says: "this function is too complex to certif
 
 `--exclude` prevents files from being parsed. `--allow` hides functions from output but they are still analyzed.
 
+## Can I run it without coverage?
+
+Yes. The coverage-free checks need no LCOV file: `--smells` (AI-slop / a11y / security / best-practice), `--duplicates`, `--dead-code`, `--checks` (all three), and `--audit-deps` (dependency vulnerabilities). A bare `npx react-crap` with no coverage file runs the `--checks` audit automatically. See [Code-Review Checks](./code-review-checks.md).
+
 ## Can I use this without React?
 
 Yes! Despite the name, it works with any TypeScript project. It analyzes `.ts` and `.tsx` files and recognizes all standard function types.
@@ -135,6 +139,7 @@ It's built for Node.js. It may work with Deno/Bun's Node compatibility layers, b
 
 - Read the [Troubleshooting guide](./troubleshooting.md)
 - Check the [Configuration Reference](./configuration.md)
+- See [Code-Review Checks](./code-review-checks.md) for the coverage-free checks
 - Open an issue on GitHub
 
 ## See also

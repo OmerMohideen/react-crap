@@ -15,9 +15,11 @@ You can configure `react-crap` via CLI flags, a `.react-crap.json` file, or inli
   "exclude": ["**/*.test.ts", "**/*.test.tsx", "src/generated/**"],
   "allow": ["use*"],
   "failAbove": true,
+  "failOnFindings": false,
   "workspace": false,
   "verbose": false,
-  "sort": "crap"
+  "sort": "crap",
+  "rules": { "loose-equality": false }
 }
 ```
 
@@ -27,6 +29,7 @@ You can configure `react-crap` via CLI flags, a `.react-crap.json` file, or inli
 |-----|------|---------|-------------|
 | `threshold` | `number` | `30` | CRAP score above which a function is flagged |
 | `failAbove` | `boolean` | `false` | Exit with code 1 if any function exceeds threshold |
+| `failOnFindings` | `boolean` | `false` | Exit with code 1 if any coverage-free check (`--checks`/`--smells`/`--duplicates`/`--dead-code`/`--audit-deps`) reports a finding |
 | `missing` | `"pessimistic" \| "optimistic" \| "skip"` | `"pessimistic"` | How to treat functions with no coverage data |
 | `exclude` | `string[]` | `[]` | File path globs to skip |
 | `allow` | `string[]` | `[]` | Functions or file globs to suppress from output |
@@ -39,27 +42,23 @@ You can configure `react-crap` via CLI flags, a `.react-crap.json` file, or inli
 | `verbose` | `boolean` | `false` | Print step-by-step progress |
 | `watch` | `boolean` | `false` | Re-run automatically on file changes |
 | `sort` | `string` | `"crap"` | Comma-separated display sort fields. `crap` (default), `file`/`name`, `path`, `function`, `line`, `cc`/`cyclomatic`, `coverage`. Combine like `file,function`. `--top` always selects the worst offenders first regardless of sort order. |
+| `rules` | `object` | — | Per-smell-kind overrides for `--smells`/`--checks`. See [Customizing Smell Rules](#customizing-smell-rules). |
 
-### Keys NOT Allowed in Config
+### Customizing Smell Rules
 
-These are intentionally CLI-only because they are environment-specific or transient:
+The `rules` key turns individual smell kinds on or off for `--smells` and `--checks`. A kind mapped to `false` is disabled; `true` force-enables a kind that's off by default (`non-null-assertion`, `type-any`). Unknown kind names are rejected with the valid list.
 
-- `--lcov` — LCOV file path
-- `--baseline` — Baseline JSON path
-- `--output` — Output file path
-- `--jobs` — Parallelism cap
-- `--no-color` — Disable colors
-- `--format` — Output format (use CLI for ad-hoc reports)
-
-### Validation
-
-Unknown keys are rejected with a validation error that includes a typo suggestion:
-
-```
-Unknown key "treshold" in /project/.react-crap.json. Did you mean "threshold"?
+```json
+{
+  "rules": {
+    "loose-equality": false,
+    "var-keyword": false,
+    "type-any": true
+  }
+}
 ```
 
-This uses Levenshtein distance with a tolerance of ≤2 character differences.
+The full kind list and their categories are in [Code-Review Checks](./code-review-checks.md).
 
 ### Keys NOT Allowed in Config
 
@@ -72,6 +71,17 @@ These are intentionally CLI-only because they are environment-specific or transi
 - `--no-color` — Disable colors
 - `--format` — Output format (use CLI for ad-hoc reports)
 - `--changed` — Transient per-run filter based on working tree state
+- `--smells` / `--duplicates` / `--dead-code` / `--checks` / `--audit-deps` — per-run modes (use `rules` to tune which smells fire)
+
+### Validation
+
+Unknown keys are rejected with a validation error that includes a typo suggestion:
+
+```
+Unknown key "treshold" in /project/.react-crap.json. Did you mean "threshold"?
+```
+
+This uses Levenshtein distance with a tolerance of ≤2 character differences.
 
 ## CLI Flags
 
@@ -106,6 +116,19 @@ npx react-crap \
   --no-color \
   --output report.txt
 ```
+
+### Coverage-Free Check Flags
+
+These run without an LCOV file and are documented in [Code-Review Checks](./code-review-checks.md):
+
+- `--smells [kinds]` — AI-slop / best-practice / a11y / security smells
+- `--duplicates [normalized]` — copy-paste and near-duplicate functions
+- `--dead-code` — unused imports
+- `--checks` — all of the above in one report
+- `--audit-deps` — known-vulnerable dependencies (wraps `npm audit`)
+- `--fail-on-findings` — exit 1 if any of the above reports a finding
+
+`--changed` scopes every mode down to the changed *lines* (not just changed files); brand-new files are reported in full.
 
 ### Filtering Precedence
 

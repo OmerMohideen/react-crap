@@ -78,6 +78,23 @@ This is useful in:
 - **Local pre-commit hooks** — get instant feedback on what you are editing
 - **CI diff gates** — verify CRAP scores only for code introduced in a PR
 
+### Coverage-Free Checks Gate
+
+Run the source checks (smells, duplicates, dead code) and/or the dependency audit with no coverage step. `--fail-on-findings` makes them block the build:
+
+```yaml
+- uses: actions/checkout@v4
+- uses: actions/setup-node@v4
+  with: { node-version: 20 }
+- run: npm ci
+# Inline PR annotations for smells/duplicates/dead-code, non-blocking:
+- run: npx react-crap --checks --format github
+# Block the build on any known-vulnerable dependency:
+- run: npx react-crap --audit-deps --fail-on-findings
+```
+
+Do **not** add `--changed` in CI — it reads the working tree, which is clean on a fresh checkout. CI scans the whole `--path`.
+
 ### Sticky PR Comment Bot
 
 Post a collapsible comment that updates on every push:

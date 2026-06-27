@@ -113,10 +113,28 @@ For local pre-commit checks, limit analysis to uncommitted `.ts`/`.tsx` files:
 npx react-crap --lcov coverage/lcov.info --path src --changed
 ```
 
-This includes modified, staged, and untracked files. It is especially useful when you want quick feedback on the code you are currently working on without waiting for a full analysis.
+This scopes down to the changed *lines* of modified, staged, and untracked files (new files are reported in full). It is especially useful when you want quick feedback on the code you are currently working on without waiting for a full analysis.
+
+## 7. Run the Coverage-Free Checks (No Setup)
+
+Don't have coverage yet? A bare run does a useful audit on its own:
+
+```bash
+# No --lcov, no coverage file → runs duplicates + smells + dead code.
+npx react-crap
+
+# Or explicitly: AI-slop / a11y / security / best-practice smells.
+npx react-crap --smells
+
+# Known-vulnerable dependencies (wraps npm audit).
+npx react-crap --audit-deps
+```
+
+These need no LCOV file. See [Code-Review Checks](./code-review-checks.md) for every check, the full smell-kind list, and how to customize which rules fire.
 
 ## Next Steps
 
+- [Code-Review Checks](./code-review-checks.md) — smells, duplicates, dead code, dependency audit
 - [Configuration Reference](./configuration.md) — all flags and options
 - [CI Integration](./ci-integration.md) — GitHub Actions, GitLab, etc.
 - [Troubleshooting](./troubleshooting.md) — common issues
