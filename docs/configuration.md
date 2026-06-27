@@ -125,7 +125,8 @@ These run without an LCOV file and are documented in [Code-Review Checks](./code
 - `--duplicates [normalized]` — copy-paste and near-duplicate functions
 - `--dead-code` — unused imports
 - `--checks` — all of the above in one report
-- `--audit-deps` — known-vulnerable dependencies (wraps `npm audit`)
+- `--audit-deps` — known-vulnerable dependencies (wraps `npm`/`pnpm`/`yarn audit`)
+- `--arch` — circular imports and bloated barrel files (whole import graph; ignores `--changed`)
 - `--fail-on-findings` — exit 1 if any of the above reports a finding
 
 `--changed` scopes every mode down to the changed *lines* (not just changed files); brand-new files are reported in full.

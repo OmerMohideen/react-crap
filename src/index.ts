@@ -3,6 +3,12 @@ import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import picomatch from "picomatch";
 import {
+	analyzeArchitecture,
+	formatArchGithub,
+	formatArchHuman,
+	formatArchJson,
+} from "./arch.js";
+import {
 	formatAuditGithub,
 	formatAuditHuman,
 	formatAuditJson,
@@ -82,6 +88,7 @@ export interface RunOptions {
 	deadCode?: boolean;
 	checks?: boolean;
 	auditDeps?: boolean;
+	arch?: boolean;
 	failOnFindings?: boolean;
 	score?: boolean;
 	minScore?: number;
@@ -215,6 +222,7 @@ async function runOnce(
 		deadCode: rawOptions.deadCode ?? false,
 		checks: rawOptions.checks ?? false,
 		auditDeps: rawOptions.auditDeps ?? false,
+		arch: rawOptions.arch ?? false,
 		failOnFindings: rawOptions.failOnFindings || config.failOnFindings || false,
 		score: rawOptions.score ?? false,
 		minScore: rawOptions.minScore ?? config.minScore,
@@ -245,7 +253,8 @@ async function runOnce(
 		options.smells ||
 		options.deadCode ||
 		options.checks ||
-		options.auditDeps;
+		options.auditDeps ||
+		options.arch;
 	if (
 		!anyCheckMode &&
 		rawOptions.lcov === undefined &&
@@ -315,6 +324,46 @@ async function runOnce(
 			allFiles.push({ path: f, package: relativePackagePath(options.path, p) });
 			watchedPaths.add(f);
 		}
+	}
+
+	// Architecture analysis needs the whole import graph, so it runs on the full
+	// file set (before any --changed filtering) and short-circuits here.
+	if (options.arch) {
+		if (allFiles.length === 0) {
+			throw new Error(
+				`No .ts/.tsx files found in ${resolve(options.path)}. Check --path and --exclude flags.`,
+			);
+		}
+		const tsPath = resolveTsPath(resolve(options.path));
+		const result = await analyzeArchitecture(
+			allFiles.map((f) => f.path),
+			tsPath,
+		);
+		log(
+			`arch: ${result.cycles.length} cycle(s), ${result.barrels.length} barrel(s)`,
+		);
+		const version = getLocalVersion();
+		const output =
+			options.format === "json"
+				? formatArchJson(result, version)
+				: options.format === "github"
+					? formatArchGithub(result)
+					: formatArchHuman(result, {
+							rootPath: resolve(options.path),
+							noColor: options.noColor,
+						});
+		if (options.output) {
+			writeFileSync(resolve(options.output), `${output}\n`, "utf-8");
+		} else {
+			console.log(output);
+		}
+		const updateMessage = await updatePromise;
+		if (updateMessage) console.error(`\n${updateMessage}\n`);
+		const findings = result.cycles.length + result.barrels.length;
+		return {
+			watchedPaths,
+			exitCode: options.failOnFindings && findings > 0 ? 1 : 0,
+		};
 	}
 
 	// Changed-line ranges power line-level (diff-only) scoping for every mode.

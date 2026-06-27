@@ -9,6 +9,7 @@ Beyond the CRAP score, `react-crap` ships a set of **coverage-free** checks — 
 | `--dead-code` | unused imports | source |
 | `--checks` | all three source checks in one report | source |
 | `--audit-deps` | known-vulnerable dependencies | a lockfile (npm/pnpm/yarn) |
+| `--arch` | circular imports, bloated barrel files | source |
 
 All are **report-only by default** (exit 0). Add `--fail-on-findings` to turn any of them into a CI gate that exits 1 when something is found.
 
@@ -119,6 +120,20 @@ npx react-crap --audit-deps --fail-on-findings   # exit 1 on any vuln
 ```
 
 It is kept out of `--checks` and zero-config because it hits the network and is slower than the source checks.
+
+## Architecture
+
+`--arch` analyzes the whole import graph (so it ignores `--changed`) and reports:
+
+- **Circular imports** — import cycles between your first-party modules (`a → b → a`). Each cycle is printed as a path.
+- **Bloated barrels** — an `index.*` file that is nothing but re-exports and re-exports ≥ 15 modules. Big barrels cause over-importing and bundle bloat.
+
+```bash
+npx react-crap --arch
+npx react-crap --arch --fail-on-findings   # exit 1 on any cycle or barrel
+```
+
+Cross-layer import rules (e.g. "ui must not import from server") are not implemented — they need a per-project layer spec; the conventionless checks above ship today.
 
 ## Health score
 
