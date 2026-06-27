@@ -113,7 +113,7 @@ Example output:
 | `--jobs <N>` | host CPUs | Cap parallel source-file analysis at `N` threads. Useful in memory-constrained CI/Docker environments. Must be a positive integer. |
 | `--output <FILE>` | — | Write output to FILE instead of stdout (useful for saving JSON baselines). |
 | `--no-color` | — | Disable colored output. |
-| `--duplicates [mode]` | — | Report duplicate functions instead of CRAP scores. No coverage needed. Default matches reformatted copy-paste; `normalized` also matches Type-2 near-duplicates (renamed/retyped). |
+| `--duplicates [mode]` | — | Report duplicate functions instead of CRAP scores. No coverage needed. Default matches reformatted copy-paste; `normalized` also matches Type-2 near-duplicates (renamed/retyped). Anonymous inline callbacks (event handlers, `useEffect`/`map` callbacks) are skipped — they share shape by nature and aren't extractable. |
 | `--smells [kinds]` | — | Report AI-slop smells instead of CRAP scores. No coverage needed. Noisy `any`/`!` excluded by default; pass `all` or a comma list of kinds. See [Code-review checks](#code-review-checks-no-coverage). |
 | `--dead-code` | — | Report unused imports instead of CRAP scores. No coverage needed. |
 | `--checks` | — | Run **all** coverage-free checks (duplicates + smells + dead code) in one report. Pair with `--changed` for pre-commit hooks. |

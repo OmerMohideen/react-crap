@@ -39,6 +39,13 @@ export function findDuplicates(
 
 	const byHash = new Map<string, ComplexityEntry[]>();
 	for (const e of complexity) {
+		// Skip anonymous inline callbacks (event handlers, useEffect/map/filter
+		// callbacks, JSX children, IIFEs). Their resolved names carry a space
+		// ("onChange handler", "useEffect callback") or a "<…>" placeholder.
+		// They're expected to share shape across call sites and aren't reusable
+		// functions you can extract, so reporting them as duplicates is noise
+		// (e.g. one onChange per settings row). Named declarations are kept.
+		if (/\s/.test(e.function) || e.function.startsWith("<")) continue;
 		// Skip trivial functions — short or straight-line bodies collide
 		// structurally all the time and aren't worth reporting.
 		if (e.endLine - e.line + 1 < minLines) continue;
