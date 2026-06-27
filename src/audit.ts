@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import Table from "cli-table3";
 import pc from "picocolors";
+import { banner, type SeverityCounts, scoreFooter } from "./report/health.js";
 
 export interface Vuln {
 	name: string;
@@ -117,7 +118,12 @@ export function formatAuditHuman(
 	const id = (s: string) => s;
 	const c = opts.noColor ? { yellow: id, gray: id, red: id, dim: id } : pc;
 
-	if (vulns.length === 0) return c.gray("No known-vulnerable dependencies.");
+	if (vulns.length === 0)
+		return [
+			banner("audit-deps", opts.noColor),
+			c.gray("No known-vulnerable dependencies."),
+			scoreFooter({ high: 0, warn: 0, note: 0 }, opts.noColor),
+		].join("\n");
 
 	const table = new Table({
 		head: ["Severity", "Package", "Fix", "Advisory"],
@@ -140,10 +146,23 @@ export function formatAuditHuman(
 		.join("  ");
 
 	return [
+		banner("audit-deps", opts.noColor),
 		c.yellow(`Found ${vulns.length} vulnerable dependency(ies):`),
 		table.toString() as string,
 		c.gray(summary),
+		scoreFooter(auditSeverityCounts(vulns), opts.noColor),
 	].join("\n");
+}
+
+// critical/high → high, moderate → warn, low/info → note.
+function auditSeverityCounts(vulns: Vuln[]): SeverityCounts {
+	const c: SeverityCounts = { high: 0, warn: 0, note: 0 };
+	for (const v of vulns) {
+		if (v.severity === "critical" || v.severity === "high") c.high++;
+		else if (v.severity === "moderate") c.warn++;
+		else c.note++;
+	}
+	return c;
 }
 
 // No file/line to attach, so these annotations surface in the job log only.

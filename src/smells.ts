@@ -2,6 +2,7 @@ import { relative } from "node:path";
 import Table from "cli-table3";
 import pc from "picocolors";
 import type { ComplexityEntry, Smell, SmellKind } from "./complexity.js";
+import { banner, type SeverityCounts, scoreFooter } from "./report/health.js";
 
 export interface SmellRow {
 	file: string;
@@ -94,9 +95,22 @@ const HOUSEKEEPING_KINDS = new Set<SmellKind>([
 	"placeholder",
 ]);
 
+// Collapse smell kinds into the three display severities for the score footer.
+export function smellSeverityCounts(rows: SmellRow[]): SeverityCounts {
+	const c: SeverityCounts = { high: 0, warn: 0, note: 0 };
+	for (const r of rows) {
+		for (const s of r.smells) {
+			if (BUG_KINDS.has(s.kind)) c.high++;
+			else if (HOUSEKEEPING_KINDS.has(s.kind)) c.note++;
+			else c.warn++;
+		}
+	}
+	return c;
+}
+
 export function formatSmellsHuman(
 	rows: SmellRow[],
-	opts: { rootPath?: string; noColor?: boolean } = {},
+	opts: { rootPath?: string; noColor?: boolean; compact?: boolean } = {},
 ): string {
 	const id = (s: string) => s;
 	const c = opts.noColor ? { yellow: id, gray: id, red: id, dim: id } : pc;
@@ -111,7 +125,12 @@ export function formatSmellsHuman(
 			: `${file}:${line}`;
 
 	if (rows.length === 0) {
-		return c.gray("No AI-slop smells found.");
+		if (opts.compact) return c.gray("No AI-slop smells found.");
+		return [
+			banner("smells", opts.noColor),
+			c.gray("No AI-slop smells found."),
+			scoreFooter({ high: 0, warn: 0, note: 0 }, opts.noColor),
+		].join("\n");
 	}
 
 	const table = new Table({
@@ -151,10 +170,16 @@ export function formatSmellsHuman(
 		.map(([k, n]) => `${paintKind(k)}: ${n}`)
 		.join("  ");
 
-	return [
+	const lines = [
 		c.yellow(`Found ${total} smell(s) in ${rows.length} function(s):`),
 		table.toString() as string,
 		c.gray(summary),
+	];
+	if (opts.compact) return lines.join("\n");
+	return [
+		banner("smells", opts.noColor),
+		...lines,
+		scoreFooter(smellSeverityCounts(rows), opts.noColor),
 	].join("\n");
 }
 

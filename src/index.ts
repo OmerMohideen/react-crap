@@ -29,6 +29,7 @@ import { getChangedFiles } from "./git.js";
 import { isLineChanged, safeChangedRanges } from "./git-diff.js";
 import { merge } from "./merge.js";
 import { formatGithub } from "./report/github.js";
+import { banner, scoreFooter } from "./report/health.js";
 import { formatHtml } from "./report/html.js";
 import { formatHuman } from "./report/human.js";
 import { formatDeltaJson, formatJson } from "./report/json.js";
@@ -42,6 +43,7 @@ import {
 	formatSmellsHuman,
 	formatSmellsJson,
 	resolveKinds,
+	smellSeverityCounts,
 } from "./smells.js";
 import { checkForUpdate, getLocalVersion } from "./version-check.js";
 import { walkFiles } from "./walker.js";
@@ -548,13 +550,21 @@ async function runOnce(
 		} else {
 			const rootPath = resolve(options.path);
 			const nc = options.noColor;
+			// Combined severity: smell buckets + each dup group as a warning and
+			// each dead import as a note.
+			const sev = smellSeverityCounts(smellRows);
+			sev.warn += dups.length;
+			sev.note += dead.length;
 			output = [
+				banner("checks", nc),
 				"━━ Duplicates ━━",
 				formatDuplicatesHuman(dups, { rootPath, noColor: nc }),
 				"\n━━ Smells ━━",
-				formatSmellsHuman(smellRows, { rootPath, noColor: nc }),
+				formatSmellsHuman(smellRows, { rootPath, noColor: nc, compact: true }),
 				"\n━━ Dead code ━━",
 				formatDeadCodeHuman(dead, { rootPath, noColor: nc }),
+				"",
+				scoreFooter(sev, nc),
 			].join("\n");
 		}
 
