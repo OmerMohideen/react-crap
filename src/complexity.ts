@@ -20,7 +20,43 @@ export type SmellKind =
 	| "dangerous-html"
 	| "eval-usage"
 	| "loose-equality"
-	| "var-keyword";
+	| "var-keyword"
+	| "img-no-alt"
+	| "button-no-type"
+	| "anchor-no-href"
+	| "positive-tabindex"
+	| "target-blank"
+	| "href-javascript";
+
+// Canonical list of every smell kind — single source of truth shared by the
+// smell engine, the default-set logic, and config validation.
+export const ALL_SMELL_KINDS: SmellKind[] = [
+	"effect-missing-deps",
+	"effect-missing-cleanup",
+	"effect-derived-state",
+	"unstable-prop",
+	"type-any",
+	"non-null-assertion",
+	"as-any",
+	"ts-suppress",
+	"console",
+	"todo",
+	"placeholder",
+	"index-as-key",
+	"passthrough-wrapper",
+	"test-no-assert",
+	"component-in-render",
+	"dangerous-html",
+	"eval-usage",
+	"loose-equality",
+	"var-keyword",
+	"img-no-alt",
+	"button-no-type",
+	"anchor-no-href",
+	"positive-tabindex",
+	"target-blank",
+	"href-javascript",
+];
 
 export interface Smell {
 	kind: SmellKind;
@@ -608,6 +644,105 @@ async function analyzeFile(
 			}
 		}
 
+		// Static string value of a JSX attribute, or undefined if dynamic/boolean.
+		const attrString = (attr: any): string | undefined => {
+			const init = attr.initializer;
+			if (!init) return undefined; // boolean shorthand, e.g. `disabled`
+			if (tsMod.isStringLiteral(init)) return init.text;
+			if (
+				tsMod.isJsxExpression(init) &&
+				init.expression &&
+				tsMod.isStringLiteral(init.expression)
+			)
+				return init.expression.text;
+			return undefined;
+		};
+		const attrNumber = (attr: any): number | undefined => {
+			const init = attr.initializer;
+			if (
+				init &&
+				tsMod.isJsxExpression(init) &&
+				init.expression &&
+				tsMod.isNumericLiteral(init.expression)
+			)
+				return Number(init.expression.text);
+			if (init && tsMod.isStringLiteral(init)) {
+				const n = Number(init.text);
+				return Number.isNaN(n) ? undefined : n;
+			}
+			return undefined;
+		};
+
+		// Element-level accessibility + security rules on intrinsic (lowercase)
+		// elements. Custom components (<Button/>) are skipped — they own their a11y.
+		function checkJsxElement(el: any) {
+			const tag = el.tagName;
+			if (!tsMod.isIdentifier(tag) || !/^[a-z]/.test(tag.text)) return;
+			const tagName = tag.text;
+			const props = el.attributes?.properties ?? [];
+			const attrs = props.filter((a: any) => tsMod.isJsxAttribute(a));
+			const spread = props.some((a: any) => tsMod.isJsxSpreadAttribute(a));
+			const get = (n: string) =>
+				attrs.find((a: any) => tsMod.isIdentifier(a.name) && a.name.text === n);
+			const line = lineOf(el);
+
+			if (tagName === "img" && !get("alt") && !spread) {
+				smells.push({
+					kind: "img-no-alt",
+					detail: "<img> has no alt attribute (a11y)",
+					line,
+				});
+			}
+			if (tagName === "button" && !get("type") && !spread) {
+				smells.push({
+					kind: "button-no-type",
+					detail: '<button> has no type (defaults to "submit")',
+					line,
+				});
+			}
+			if (tagName === "a") {
+				const href = get("href");
+				if (!href && !spread) {
+					smells.push({
+						kind: "anchor-no-href",
+						detail: "<a> has no href (use a button for actions)",
+						line,
+					});
+				}
+				const hv = href && attrString(href);
+				if (hv && /^\s*javascript:/i.test(hv)) {
+					smells.push({
+						kind: "href-javascript",
+						detail: 'href="javascript:" (XSS / injection risk)',
+						line,
+					});
+				}
+				const target = get("target");
+				if (target && attrString(target) === "_blank") {
+					const rel = get("rel");
+					const rv = rel ? (attrString(rel) ?? "") : "";
+					if (!rel || !/noopener|noreferrer/.test(rv)) {
+						smells.push({
+							kind: "target-blank",
+							detail: 'target="_blank" without rel="noopener" (tabnabbing)',
+							line,
+						});
+					}
+				}
+			}
+			const ti = get("tabIndex") ?? get("tabindex");
+			if (ti) {
+				const v = attrNumber(ti);
+				if (v !== undefined && v > 0) {
+					smells.push({
+						kind: "positive-tabindex",
+						detail: `tabIndex={${v}} disrupts natural tab order (use 0 or -1)`,
+						line,
+					});
+				}
+			}
+		}
+
 		// PascalCase name of a function node (from its own name or its variable
 		// declaration) — i.e. it looks like a React component, not a handler.
 		const pascalName = (n: any): string | undefined => {
@@ -711,6 +846,11 @@ async function analyzeFile(
 				});
 			}
 			if (tsMod.isJsxAttribute(node)) checkJsxAttr(node);
+			if (
+				tsMod.isJsxSelfClosingElement(node) ||
+				tsMod.isJsxOpeningElement(node)
+			)
+				checkJsxElement(node);
 			if (node.kind === tsMod.SyntaxKind.AnyKeyword) {
 				smells.push({
 					kind: "type-any",

@@ -39,10 +39,10 @@ import { formatSarif } from "./report/sarif.js";
 import { filter, score, sortEntries } from "./score.js";
 import {
 	collectSmells,
+	effectiveKinds,
 	formatSmellsGithub,
 	formatSmellsHuman,
 	formatSmellsJson,
-	resolveKinds,
 	smellSeverityCounts,
 } from "./smells.js";
 import { checkForUpdate, getLocalVersion } from "./version-check.js";
@@ -481,7 +481,10 @@ async function runOnce(
 
 	// AI-slop smell detection. Also coverage-independent — short-circuit here.
 	if (options.smells) {
-		const rows = collectSmells(complexity, resolveKinds(options.smellKinds));
+		const rows = collectSmells(
+			complexity,
+			effectiveKinds(options.smellKinds, config.rules),
+		);
 		log(`Found smells in ${rows.length} function(s)`);
 		const version = getLocalVersion();
 		const output =
@@ -513,7 +516,7 @@ async function runOnce(
 		const dups = findDuplicates(complexity);
 		const smellRows = collectSmells(
 			complexity,
-			resolveKinds(options.smellKinds),
+			effectiveKinds(options.smellKinds, config.rules),
 		);
 		let dead = await findDeadImports(
 			allFiles.map((f) => f.path),

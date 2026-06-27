@@ -317,14 +317,32 @@ npx react-crap --audit-deps
 npx react-crap --audit-deps --fail-on-findings   # exit 1 if any vuln found
 ```
 
-Smell kinds: `effect-missing-deps`, `effect-missing-cleanup`, `effect-derived-state`, `unstable-prop`, `component-in-render`, `index-as-key`, `passthrough-wrapper`, `test-no-assert`, `dangerous-html`, `eval-usage`, `loose-equality`, `var-keyword`, `as-any`, `non-null-assertion`, `type-any`, `ts-suppress`, `console`, `todo`, `placeholder`. In the human report kinds are colored by severity (red = likely bug, yellow = quality, dim = housekeeping).
+In the human report kinds are colored by severity (red = likely bug, yellow = quality, dim = housekeeping).
 
 By category:
 
-- **Performance** — `unstable-prop` (inline object/array/function props), `component-in-render` (nested component remounts every render), `index-as-key`.
-- **Security** (source patterns) — `dangerous-html` (`dangerouslySetInnerHTML` / XSS), `eval-usage` (`eval` / `new Function`).
-- **Best practice** — `loose-equality` (`==`/`!=`), `var-keyword`, `passthrough-wrapper`, `test-no-assert`.
 - **State & effects** — `effect-missing-deps`, `effect-missing-cleanup`, `effect-derived-state`.
+- **Performance** — `unstable-prop` (inline object/array/function props), `component-in-render` (nested component remounts every render), `index-as-key`.
+- **Security** (source patterns) — `dangerous-html` (`dangerouslySetInnerHTML` / XSS), `eval-usage` (`eval` / `new Function`), `href-javascript` (`href="javascript:"`), `target-blank` (`target="_blank"` without `rel="noopener"`).
+- **Accessibility** — `img-no-alt`, `button-no-type`, `anchor-no-href`, `positive-tabindex`.
+- **Best practice** — `loose-equality` (`==`/`!=`), `var-keyword`, `passthrough-wrapper`, `test-no-assert`.
+- **Type escapes / housekeeping** — `as-any`, `non-null-assertion`, `type-any`, `ts-suppress`, `console`, `todo`, `placeholder`.
+
+`non-null-assertion` and `type-any` are noisy in normal TS and off by default — opt in with `--smells all`, by name, or per-rule config (below).
+
+### Customizing which rules run
+
+Set a `rules` map in `.react-crap.json` to force kinds on or off. `false` disables a kind; `true` force-enables one that's off by default. Applies to `--smells` and `--checks`. Unknown kind names are rejected.
+
+```json
+{
+  "rules": {
+    "loose-equality": false,
+    "var-keyword": false,
+    "type-any": true
+  }
+}
+```
 
 All three are **report-only by default** — they print findings and exit 0, so they never block. Add `--fail-on-findings` to exit 1 when anything is found (CI gate), or `--format json` for machine output.
 

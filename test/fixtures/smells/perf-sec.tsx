@@ -21,3 +21,18 @@ export function Parent() {
 function Sibling() {
 	return <p>ok</p>;
 }
+
+// Accessibility + element-level security rules.
+export function Markup() {
+	return (
+		<div>
+			<img src="x.png" />
+			<button>Go</button>
+			<a target="_blank" href="https://x.com">
+				x
+			</a>
+			<a href="javascript:alert(1)">bad</a>
+			<span tabIndex={3}>t</span>
+		</div>
+	);
+}

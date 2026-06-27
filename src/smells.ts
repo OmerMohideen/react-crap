@@ -1,7 +1,12 @@
 import { relative } from "node:path";
 import Table from "cli-table3";
 import pc from "picocolors";
-import type { ComplexityEntry, Smell, SmellKind } from "./complexity.js";
+import {
+	ALL_SMELL_KINDS,
+	type ComplexityEntry,
+	type Smell,
+	type SmellKind,
+} from "./complexity.js";
 import { banner, type SeverityCounts, scoreFooter } from "./report/health.js";
 
 export interface SmellRow {
@@ -28,36 +33,35 @@ export function resolveKinds(filter?: string): SmellKind[] | undefined {
 }
 
 function allKindsExcept(exclude: SmellKind[]): SmellKind[] {
-	const all: SmellKind[] = [
-		"effect-missing-deps",
-		"effect-missing-cleanup",
-		"effect-derived-state",
-		"unstable-prop",
-		"type-any",
-		"non-null-assertion",
-		"as-any",
-		"ts-suppress",
-		"console",
-		"todo",
-		"placeholder",
-		"index-as-key",
-		"passthrough-wrapper",
-		"test-no-assert",
-		"component-in-render",
-		"dangerous-html",
-		"eval-usage",
-		"loose-equality",
-		"var-keyword",
-	];
 	const ex = new Set(exclude);
-	return all.filter((k) => !ex.has(k));
+	return ALL_SMELL_KINDS.filter((k) => !ex.has(k));
+}
+
+// Apply user rule overrides from config on top of the CLI-selected kind set.
+// `rules` maps a kind to true (force-on, even if noisy/deselected) or false
+// (disable). Returns the concrete kind list to scan.
+export function effectiveKinds(
+	filter?: string,
+	rules?: Record<string, boolean>,
+): SmellKind[] {
+	const base = resolveKinds(filter) ?? ALL_SMELL_KINDS;
+	if (!rules) return [...base];
+	const set = new Set<SmellKind>(base);
+	for (const [kind, on] of Object.entries(rules)) {
+		if (on) set.add(kind as SmellKind);
+		else set.delete(kind as SmellKind);
+	}
+	// Preserve the canonical order for stable output.
+	return ALL_SMELL_KINDS.filter((k) => set.has(k));
 }
 
 export function collectSmells(
 	complexity: ComplexityEntry[],
 	only?: SmellKind[],
 ): SmellRow[] {
-	const onlySet = only && only.length > 0 ? new Set(only) : undefined;
+	// undefined => all kinds; an explicit list (even empty) is used as-is, so
+	// disabling every kind via config yields no findings rather than all.
+	const onlySet = only ? new Set(only) : undefined;
 	const rows: SmellRow[] = [];
 	for (const e of complexity) {
 		const smells = onlySet
@@ -88,6 +92,8 @@ const BUG_KINDS = new Set<SmellKind>([
 	"component-in-render",
 	"dangerous-html",
 	"eval-usage",
+	"target-blank",
+	"href-javascript",
 ]);
 const HOUSEKEEPING_KINDS = new Set<SmellKind>([
 	"console",

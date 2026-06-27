@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { ComplexityEntry, SmellKind } from "../src/complexity";
 import { analyzeComplexity } from "../src/complexity";
-import { collectSmells, countByKind } from "../src/smells";
+import { collectSmells, countByKind, effectiveKinds } from "../src/smells";
 
 const fixture = resolve("test/fixtures/smells/slop.tsx");
 
@@ -83,6 +83,17 @@ describe("passthrough + test-no-assert", () => {
 		expect(flaggedNames).not.toContain("Sibling");
 	});
 
+	it("flags accessibility and element-level security issues", async () => {
+		const f = resolve("test/fixtures/smells/perf-sec.tsx");
+		const result = await analyzeComplexity([f]);
+		const all = new Set(result.flatMap((r) => r.smells.map((s) => s.kind)));
+		expect(all).toContain("img-no-alt");
+		expect(all).toContain("button-no-type");
+		expect(all).toContain("target-blank");
+		expect(all).toContain("href-javascript");
+		expect(all).toContain("positive-tabindex");
+	});
+
 	it("flags an it() with no expect, but not one with expect", async () => {
 		const f = resolve("test/fixtures/smells/faketests.test.tsx");
 		const result = await analyzeComplexity([f]);
@@ -98,5 +109,32 @@ describe("passthrough + test-no-assert", () => {
 			r.smells.some((s) => s.kind === "test-no-assert"),
 		);
 		expect(any).toBe(false);
+	});
+});
+
+describe("effectiveKinds (rule customization)", () => {
+	it("defaults to all kinds except the noisy ones", () => {
+		const k = effectiveKinds();
+		expect(k).toContain("loose-equality");
+		expect(k).not.toContain("type-any"); // noisy, off by default
+		expect(k).not.toContain("non-null-assertion");
+	});
+
+	it("config can disable a default kind", () => {
+		const k = effectiveKinds(undefined, { "loose-equality": false });
+		expect(k).not.toContain("loose-equality");
+		expect(k).toContain("var-keyword");
+	});
+
+	it("config can force-on a noisy default-off kind", () => {
+		const k = effectiveKinds(undefined, { "type-any": true });
+		expect(k).toContain("type-any");
+	});
+
+	it("disabling every kind yields an empty list (not 'all')", () => {
+		const rules = Object.fromEntries(
+			effectiveKinds().map((kind) => [kind, false]),
+		);
+		expect(effectiveKinds(undefined, rules)).toEqual([]);
 	});
 });
