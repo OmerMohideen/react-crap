@@ -102,6 +102,26 @@ describe("passthrough + test-no-assert", () => {
 		expect(all).toContain("label-no-control");
 	});
 
+	it("does not raise known false positives", async () => {
+		const f = resolve("test/fixtures/smells/no-false-positives.tsx");
+		const result = await analyzeComplexity([f]);
+		const kindsOf = (fn: string) =>
+			new Set(
+				result
+					.filter((r) => r.function === fn)
+					.flatMap((r) => r.smells.map((s) => s.kind)),
+			);
+		// Wrapper that adds href + children is not a passthrough.
+		expect(kindsOf("ValueWrapper")).not.toContain("passthrough-wrapper");
+		// Effect returning subscribe() has cleanup.
+		const subKinds = new Set(
+			result.flatMap((r) => r.smells.map((s) => s.kind)),
+		);
+		expect(subKinds).not.toContain("effect-missing-cleanup");
+		// localStorage.setItem is not a state setter.
+		expect(kindsOf("Persist")).not.toContain("effect-derived-state");
+	});
+
 	it("flags an it() with no expect, but not one with expect", async () => {
 		const f = resolve("test/fixtures/smells/faketests.test.tsx");
 		const result = await analyzeComplexity([f]);

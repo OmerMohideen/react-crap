@@ -522,14 +522,31 @@ async function analyzeFile(
 			else if (tsMod.isJsxElement(ret))
 				attrs = ret.openingElement?.attributes?.properties;
 			if (!attrs) return;
-			if (attrs.some((a: any) => tsMod.isJsxSpreadAttribute(a))) {
-				smells.push({
-					kind: "passthrough-wrapper",
-					detail:
-						"component only spreads props into one element (no value added)",
-					line: lineOf(fnNode),
-				});
+
+			// Pure passthrough = the element's ONLY attribute is a spread and it has
+			// no children. Anything else (other props, children) adds value, so it's
+			// not a do-nothing wrapper. <a target rel href {...p}>{children}</a> and
+			// <ul {...p} className>{items}</ul> are NOT passthroughs.
+			const spreads = attrs.filter((a: any) => tsMod.isJsxSpreadAttribute(a));
+			const others = attrs.filter((a: any) => !tsMod.isJsxSpreadAttribute(a));
+			if (spreads.length === 0 || others.length > 0) return;
+			if (tsMod.isJsxElement(ret)) {
+				const kids = (ret.children ?? []).filter((k: any) =>
+					tsMod.isJsxText(k) ? k.text.trim().length > 0 : true,
+				);
+				if (kids.length > 0) return;
 			}
+			// Passthrough is a component concept — skip anonymous inline callbacks
+			// (useMemo/map callbacks etc.), whose resolved names carry a space or "<".
+			const fnName = getFunctionName(fnNode);
+			if (/\s/.test(fnName) || fnName.startsWith("<")) return;
+
+			smells.push({
+				kind: "passthrough-wrapper",
+				detail:
+					"component only spreads props into one element (no value added)",
+				line: lineOf(fnNode),
+			});
 		})();
 
 		// Assertion-less test: an it()/test() callback with no expect()/assert().
@@ -577,12 +594,27 @@ async function analyzeFile(
 			let subscribes = false;
 			const SUB =
 				/^(addEventListener|setInterval|setTimeout|subscribe|addListener|on)$/;
+
+			// A concise arrow returns its body expression as the cleanup, e.g.
+			// `useEffect(() => store.subscribe(fn), [])` — subscribe() returns the
+			// unsubscribe function. Treat a returned call expression as cleanup.
+			const isCleanupExpr = (e: any): boolean =>
+				e &&
+				(tsMod.isArrowFunction(e) ||
+					tsMod.isFunctionExpression(e) ||
+					tsMod.isCallExpression(e));
+			let body0 = cb.body;
+			while (body0 && tsMod.isParenthesizedExpression(body0))
+				body0 = body0.expression;
+			if (body0 && !tsMod.isBlock(body0) && isCleanupExpr(body0)) {
+				returnsFn = true;
+			}
+
 			(function scan(n: any) {
 				if (
 					tsMod.isReturnStatement(n) &&
 					n.expression &&
-					(tsMod.isArrowFunction(n.expression) ||
-						tsMod.isFunctionExpression(n.expression))
+					isCleanupExpr(n.expression)
 				) {
 					returnsFn = true;
 				}
@@ -604,13 +636,23 @@ async function analyzeFile(
 			}
 
 			// "You might not need an effect": body does nothing but call setters.
+			// A state setter is a BARE identifier `setX(...)` — not a property-access
+			// call like `localStorage.setItem(...)` and not a timer (`setTimeout`).
+			const isStateSetter = (callExpr: any): boolean => {
+				const e = callExpr.expression;
+				return (
+					tsMod.isIdentifier(e) &&
+					/^set[A-Z]/.test(e.text) &&
+					!/^set(Timeout|Interval|Immediate)$/.test(e.text)
+				);
+			};
 			const body = cb.body;
 			if (body && tsMod.isBlock(body) && body.statements.length > 0) {
 				const allSetters = body.statements.every(
 					(s: any) =>
 						tsMod.isExpressionStatement(s) &&
 						tsMod.isCallExpression(s.expression) &&
-						/^set[A-Z]/.test(calleeName(s.expression.expression) ?? ""),
+						isStateSetter(s.expression),
 				);
 				if (allSetters) {
 					smells.push({
