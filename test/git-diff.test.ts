@@ -1,6 +1,10 @@
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { getChangedLineRanges } from "../src/git-diff";
+import {
+	getChangedLineRanges,
+	isLineChanged,
+	normalizeRanges,
+} from "../src/git-diff";
 
 vi.mock("node:child_process", () => ({
 	execSync: vi.fn(),
@@ -17,6 +21,25 @@ function mockExec(outputs: Record<string, string | Buffer>) {
 		throw err;
 	});
 }
+
+describe("isLineChanged", () => {
+	const ranges = normalizeRanges(
+		new Map([["C:\\proj\\src\\lib.ts", new Set([10, 11, 12])]]),
+	);
+
+	it("matches when a function's line range overlaps a changed line", () => {
+		// forward-slashed path (as TS reports it) still resolves
+		expect(isLineChanged("C:/proj/src/lib.ts", 8, 11, ranges)).toBe(true);
+	});
+
+	it("rejects when the range misses every changed line", () => {
+		expect(isLineChanged("C:/proj/src/lib.ts", 1, 5, ranges)).toBe(false);
+	});
+
+	it("treats a file absent from the ranges as fully new", () => {
+		expect(isLineChanged("C:/proj/src/new.ts", 1, 1, ranges)).toBe(true);
+	});
+});
 
 describe("getChangedLineRanges", () => {
 	beforeEach(() => {

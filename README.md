@@ -40,6 +40,10 @@ npm install --save-dev @omermohideen/react-crap
 ## Quick start
 
 ```bash
+# 0. Zero-config: no coverage, no flags. Runs the coverage-free audit
+#    (duplicates + smells + dead code) so you get signal immediately.
+npx @omermohideen/react-crap
+
 # 1. Generate an LCOV coverage report.
 npx vitest run --coverage
 
@@ -100,7 +104,7 @@ Example output:
 | `--workspace` | off | Analyze all workspace packages (discovered via `package.json` workspaces or `pnpm-workspace.yaml`). Ignores `--path`. Adds a *Per-package summary* table to human and markdown output, and a `package` field to JSON entries. |
 | `--verbose` | off | Print step-by-step progress to stderr (file discovery, analysis progress, merge/scoring steps). |
 | `--watch` | off | Re-run automatically when source files or LCOV change. Uses 1-second polling. Press Ctrl+C to stop. |
-| `--changed` | off | Only analyze uncommitted `.ts`/`.tsx` files (modified, staged, and untracked). Useful for pre-commit checks and local iteration. CLI-only; not supported in config. |
+| `--changed` | off | Diff-only mode. Scopes analysis to uncommitted `.ts`/`.tsx` changes (modified, staged, and untracked) **down to the changed lines** — CRAP scores, smells, and duplicates only report functions overlapping a changed line; dead-code only reports imports on changed lines; brand-new files are reported in full. Useful for pre-commit checks and local iteration. CLI-only; not supported in config. |
 | `--fail-above` | off | Exit 1 if any function exceeds `--threshold`. |
 | `--baseline <FILE>` | — | JSON from a previous `--format json` run. Enables delta mode (shows Δ column). Functions that moved between files (same name, body unchanged) are detected and reported as `Moved` rather than as separate New + Removed entries; renderers show `← <previous_file>` next to the new location. |
 | `--fail-regression` | off | Exit 1 if any function's score increased since `--baseline`. `Moved` (pure relocation, no score change) is not a regression. |
@@ -113,6 +117,7 @@ Example output:
 | `--smells [kinds]` | — | Report AI-slop smells instead of CRAP scores. No coverage needed. Noisy `any`/`!` excluded by default; pass `all` or a comma list of kinds. See [Code-review checks](#code-review-checks-no-coverage). |
 | `--dead-code` | — | Report unused imports instead of CRAP scores. No coverage needed. |
 | `--checks` | — | Run **all** coverage-free checks (duplicates + smells + dead code) in one report. Pair with `--changed` for pre-commit hooks. |
+| `--fail-on-findings` | off | Exit 1 if any coverage-free check (`--checks` / `--smells` / `--duplicates` / `--dead-code`) reports a finding. The CI gate for the checks, mirroring `--fail-above` for CRAP scores. |
 
 ### Filtering order
 
@@ -138,6 +143,7 @@ Any flag can be set persistently in `.react-crap.json` at the project root (or a
   "exclude": ["**/*.test.ts", "**/*.test.tsx"],
   "allow": ["src/generated/**"],
   "failAbove": true,
+  "failOnFindings": false,
   "workspace": false,
   "verbose": false,
   "sort": "crap"
@@ -308,7 +314,7 @@ npx react-crap --checks
 
 Smell kinds: `effect-missing-deps`, `effect-missing-cleanup`, `effect-derived-state`, `unstable-prop`, `index-as-key`, `passthrough-wrapper`, `test-no-assert`, `as-any`, `non-null-assertion`, `type-any`, `ts-suppress`, `console`, `todo`, `placeholder`. In the human report kinds are colored by severity (red = likely bug, yellow = quality, dim = housekeeping).
 
-All three are **report-only** — they print findings and exit 0, so they never block. Add `--format json` for machine output.
+All three are **report-only by default** — they print findings and exit 0, so they never block. Add `--fail-on-findings` to exit 1 when anything is found (CI gate), or `--format json` for machine output.
 
 ### Pre-commit hook (husky + lint-staged)
 
@@ -333,7 +339,7 @@ npx react-crap --checks --changed --no-color || true
 }
 ```
 
-Drop the `|| true` (or lint-staged's non-zero tolerance) if you ever add a `--fail-on-*` gate and want the commit blocked.
+Add `--fail-on-findings` (and drop the `|| true`) if you want the commit blocked when a check fires.
 
 ### In CI (any platform)
 
@@ -369,7 +375,7 @@ react-crap:
 Notes:
 - `--format json`/`github` are supported by `--checks`, `--smells`, `--duplicates`, and `--dead-code`.
 - **Do not** add `--changed` in CI — it reads the working tree (uncommitted edits), which is empty on a fresh checkout. CI scans the whole `--path`.
-- Report-only, so the job stays green. Add a `--fail-on-*` gate (not yet implemented) to block merges.
+- Report-only by default, so the job stays green. Add `--fail-on-findings` to fail the job (block merges) when any check fires.
 
 ## Integrating with CI
 

@@ -5,6 +5,7 @@ const ALLOWED_KEYS = new Set([
 	"threshold",
 	"componentThreshold",
 	"failAbove",
+	"failOnFindings",
 	"missing",
 	"exclude",
 	"allow",
@@ -23,6 +24,7 @@ export interface Config {
 	threshold?: number;
 	componentThreshold?: number;
 	failAbove?: boolean;
+	failOnFindings?: boolean;
 	missing?: "pessimistic" | "optimistic" | "skip";
 	exclude?: string[];
 	allow?: string[];

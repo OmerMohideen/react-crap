@@ -74,6 +74,10 @@ program
 		"Run all coverage-free checks (duplicates + smells + dead code) in one report. Pair with --changed for pre-commit hooks",
 	)
 	.option(
+		"--fail-on-findings",
+		"Exit 1 if any coverage-free check (--checks/--smells/--duplicates/--dead-code) reports a finding",
+	)
+	.option(
 		"--sort <fields>",
 		"Sort display by comma-separated fields: crap, file, name, path, function, line, cc, cyclomatic, coverage, hooks, renderBranches, type",
 		"crap",
@@ -119,6 +123,7 @@ run({
 	smellKinds: typeof options.smells === "string" ? options.smells : undefined,
 	deadCode: options.deadCode ?? false,
 	checks: options.checks ?? false,
+	failOnFindings: options.failOnFindings ?? false,
 	sort: options.sort,
 	output: options.output,
 	noColor,
