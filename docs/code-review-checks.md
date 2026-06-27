@@ -8,7 +8,7 @@ Beyond the CRAP score, `react-crap` ships a set of **coverage-free** checks — 
 | `--duplicates [normalized]` | copy-paste (and Type-2 near-duplicate) functions | source |
 | `--dead-code` | unused imports | source |
 | `--checks` | all three source checks in one report | source |
-| `--audit-deps` | known-vulnerable dependencies | `package-lock.json` |
+| `--audit-deps` | known-vulnerable dependencies | a lockfile (npm/pnpm/yarn) |
 
 All are **report-only by default** (exit 0). Add `--fail-on-findings` to turn any of them into a CI gate that exits 1 when something is found.
 
@@ -111,7 +111,7 @@ Drop the `|| true` and add `--fail-on-findings` if you want the commit blocked w
 
 ## Dependency audit
 
-`--audit-deps` wraps `npm audit --json` and prints a severity-sorted table with fix availability and advisory links. It runs from the nearest `package.json` and needs a `package-lock.json` (npm projects only).
+`--audit-deps` runs your package manager's audit and prints a severity-sorted table with fix availability and advisory links. It runs from the nearest `package.json` and detects the lockfile: `package-lock.json` → `npm audit`, `pnpm-lock.yaml` → `pnpm audit`, `yarn.lock` → `yarn audit` (classic). All emit different JSON; react-crap parses each into the same report.
 
 ```bash
 npx react-crap --audit-deps

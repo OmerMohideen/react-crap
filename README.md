@@ -117,7 +117,7 @@ Example output:
 | `--smells [kinds]` | — | Report AI-slop smells instead of CRAP scores. No coverage needed. Noisy `any`/`!` excluded by default; pass `all` or a comma list of kinds. See [Code-review checks](#code-review-checks-no-coverage). |
 | `--dead-code` | — | Report unused imports instead of CRAP scores. No coverage needed. |
 | `--checks` | — | Run **all** coverage-free checks (duplicates + smells + dead code) in one report. Pair with `--changed` for pre-commit hooks. |
-| `--audit-deps` | — | Scan dependencies for known vulnerabilities via `npm audit` (no coverage or source needed). Reads `package-lock.json`; npm projects only. Report-only unless `--fail-on-findings`. Kept out of `--checks` (network + slow). |
+| `--audit-deps` | — | Scan dependencies for known vulnerabilities via your package manager's audit (no coverage or source needed). Detects the lockfile and runs `npm`/`pnpm`/`yarn audit`. Report-only unless `--fail-on-findings`. Kept out of `--checks` (network + slow). |
 | `--fail-on-findings` | off | Exit 1 if any coverage-free check (`--checks` / `--smells` / `--duplicates` / `--dead-code` / `--audit-deps`) reports a finding. The CI gate for the checks, mirroring `--fail-above` for CRAP scores. |
 
 ### Filtering order
