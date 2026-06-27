@@ -119,6 +119,7 @@ Example output:
 | `--checks` | — | Run **all** coverage-free checks (duplicates + smells + dead code) in one report. Pair with `--changed` for pre-commit hooks. |
 | `--audit-deps` | — | Scan dependencies for known vulnerabilities via your package manager's audit (no coverage or source needed). Detects the lockfile and runs `npm`/`pnpm`/`yarn audit`. Report-only unless `--fail-on-findings`. Kept out of `--checks` (network + slow). |
 | `--arch` | — | Report architecture issues — circular imports and bloated barrel files (no coverage needed). Analyzes the whole import graph, so it ignores `--changed`. Report-only unless `--fail-on-findings`. |
+| `--audit-supply-chain` | — | Heuristic supply-chain check: direct deps with install/postinstall scripts and typosquat-shaped names (one edit from a popular package). Reads `package.json` + `node_modules`; no network. Report-only unless `--fail-on-findings`. Not part of `--checks`. |
 | `--fail-on-findings` | off | Exit 1 if any coverage-free check (`--checks` / `--smells` / `--duplicates` / `--dead-code` / `--audit-deps`) reports a finding. The CI gate for the checks, mirroring `--fail-above` for CRAP scores. |
 | `--score` | — | Run the coverage-free checks and print only the health score (0–100). With `--format json`, emits `{ score, counts }`. Good for badges / dashboards. |
 | `--min-score <N>` | — | Exit 1 if the coverage-free health score is below `N`. Score gate (runs `--checks`). |
@@ -208,6 +209,7 @@ Complexity analysis results are cached in `.react-crap-cache.json` (created next
 | `--checks` | [`schemas/checks-v1.json`](https://raw.githubusercontent.com/OmerMohideen/react-crap/master/schemas/checks-v1.json) |
 | `--audit-deps` | [`schemas/audit-v1.json`](https://raw.githubusercontent.com/OmerMohideen/react-crap/master/schemas/audit-v1.json) |
 | `--arch` | [`schemas/arch-v1.json`](https://raw.githubusercontent.com/OmerMohideen/react-crap/master/schemas/arch-v1.json) |
+| `--audit-supply-chain` | [`schemas/supply-chain-v1.json`](https://raw.githubusercontent.com/OmerMohideen/react-crap/master/schemas/supply-chain-v1.json) |
 
 Every coverage-free check's `--format json` output carries a `$schema` URL pointing at the matching schema above.
 

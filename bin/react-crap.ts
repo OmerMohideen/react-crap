@@ -82,6 +82,10 @@ program
 		"Report architecture issues: circular imports and bloated barrel files (no coverage needed)",
 	)
 	.option(
+		"--audit-supply-chain",
+		"Flag dependency install/postinstall scripts and typosquat-shaped names (heuristic; reads package.json + node_modules)",
+	)
+	.option(
 		"--score",
 		"Run the coverage-free checks and print only the health score (0-100)",
 	)
@@ -140,6 +144,7 @@ run({
 	deadCode: options.deadCode ?? false,
 	checks: options.checks ?? false,
 	auditDeps: options.auditDeps ?? false,
+	auditSupplyChain: options.auditSupplyChain ?? false,
 	arch: options.arch ?? false,
 	failOnFindings: options.failOnFindings ?? false,
 	score: options.score ?? false,

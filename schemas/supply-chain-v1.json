@@ -1,0 +1,22 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "https://raw.githubusercontent.com/OmerMohideen/react-crap/master/schemas/supply-chain-v1.json",
+	"type": "object",
+	"required": ["version", "findings"],
+	"properties": {
+		"$schema": { "type": "string" },
+		"version": { "type": "string" },
+		"findings": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"required": ["package", "kind", "detail"],
+				"properties": {
+					"package": { "type": "string" },
+					"kind": { "type": "string", "enum": ["install-script", "typosquat"] },
+					"detail": { "type": "string" }
+				}
+			}
+		}
+	}
+}

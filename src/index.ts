@@ -52,6 +52,12 @@ import {
 	formatSmellsJson,
 	smellSeverityCounts,
 } from "./smells.js";
+import {
+	analyzeSupplyChain,
+	formatSupplyChainGithub,
+	formatSupplyChainHuman,
+	formatSupplyChainJson,
+} from "./supply-chain.js";
 import { checkForUpdate, getLocalVersion } from "./version-check.js";
 import { walkFiles } from "./walker.js";
 
@@ -88,6 +94,7 @@ export interface RunOptions {
 	deadCode?: boolean;
 	checks?: boolean;
 	auditDeps?: boolean;
+	auditSupplyChain?: boolean;
 	arch?: boolean;
 	failOnFindings?: boolean;
 	score?: boolean;
@@ -222,6 +229,7 @@ async function runOnce(
 		deadCode: rawOptions.deadCode ?? false,
 		checks: rawOptions.checks ?? false,
 		auditDeps: rawOptions.auditDeps ?? false,
+		auditSupplyChain: rawOptions.auditSupplyChain ?? false,
 		arch: rawOptions.arch ?? false,
 		failOnFindings: rawOptions.failOnFindings || config.failOnFindings || false,
 		score: rawOptions.score ?? false,
@@ -254,6 +262,7 @@ async function runOnce(
 		options.deadCode ||
 		options.checks ||
 		options.auditDeps ||
+		options.auditSupplyChain ||
 		options.arch;
 	if (
 		!anyCheckMode &&
@@ -294,6 +303,31 @@ async function runOnce(
 		return {
 			watchedPaths,
 			exitCode: options.failOnFindings && vulns.length > 0 ? 1 : 0,
+		};
+	}
+
+	// Supply-chain heuristics: also source-independent (reads package.json and
+	// node_modules manifests), so short-circuit alongside the dependency audit.
+	if (options.auditSupplyChain) {
+		const findings = analyzeSupplyChain(resolve(options.path));
+		log(`supply-chain: ${findings.length} finding(s)`);
+		const version = getLocalVersion();
+		const output =
+			options.format === "json"
+				? formatSupplyChainJson(findings, version)
+				: options.format === "github"
+					? formatSupplyChainGithub(findings)
+					: formatSupplyChainHuman(findings, { noColor: options.noColor });
+		if (options.output) {
+			writeFileSync(resolve(options.output), `${output}\n`, "utf-8");
+		} else {
+			console.log(output);
+		}
+		const updateMessage = await updatePromise;
+		if (updateMessage) console.error(`\n${updateMessage}\n`);
+		return {
+			watchedPaths,
+			exitCode: options.failOnFindings && findings.length > 0 ? 1 : 0,
 		};
 	}
 

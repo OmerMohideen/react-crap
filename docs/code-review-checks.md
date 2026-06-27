@@ -10,6 +10,7 @@ Beyond the CRAP score, `react-crap` ships a set of **coverage-free** checks — 
 | `--checks` | all three source checks in one report | source |
 | `--audit-deps` | known-vulnerable dependencies | a lockfile (npm/pnpm/yarn) |
 | `--arch` | circular imports, bloated barrel files | source |
+| `--audit-supply-chain` | dep install scripts, typosquat-shaped names | `package.json` + `node_modules` |
 
 All are **report-only by default** (exit 0). Add `--fail-on-findings` to turn any of them into a CI gate that exits 1 when something is found.
 
@@ -120,6 +121,20 @@ npx react-crap --audit-deps --fail-on-findings   # exit 1 on any vuln
 ```
 
 It is kept out of `--checks` and zero-config because it hits the network and is slower than the source checks.
+
+## Supply-chain heuristics
+
+`--audit-supply-chain` is a no-network, heuristic complement to `--audit-deps` (which finds known CVEs). It scans your **direct** dependencies for:
+
+- **Install scripts** — deps whose installed manifest defines `preinstall`/`install`/`postinstall`. These run arbitrary code on `npm install`; review them. (Bug-severity.)
+- **Typosquat-shaped names** — a dep name that is exactly one edit away from a popular package (e.g. `reactt` vs `react`) but isn't that package. Heuristic, so note-severity — verify it's intentional, not a confirmed attack.
+
+```bash
+npx react-crap --audit-supply-chain
+npx react-crap --audit-supply-chain --fail-on-findings
+```
+
+Conservative by design (direct deps only, strict one-edit distance, small curated popular list) to keep false positives low. Not part of `--checks`.
 
 ## Architecture
 
