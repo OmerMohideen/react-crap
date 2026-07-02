@@ -1,9 +1,14 @@
 {
   "threshold": 30,
   "failAbove": false,
+  "failOnFindings": false,
   "missing": "pessimistic",
   "exclude": ["test/**", "tests/**", "**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx"],
   "allow": [],
   "epsilon": 0.01,
-  "sort": "crap"
+  "sort": "crap",
+  "rules": {
+    "loose-equality": false,
+    "var-keyword": false
+  }
 }

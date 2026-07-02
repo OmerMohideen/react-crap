@@ -51,6 +51,31 @@ describe("findDuplicates", () => {
 		expect(groups).toHaveLength(0);
 	});
 
+	it("skips anonymous inline callbacks (handlers/callbacks), keeps named fns", () => {
+		// Two structurally-identical onChange handlers (e.g. settings toggles)
+		// must NOT be reported — they're expected to share shape per call site.
+		expect(
+			findDuplicates([
+				entry({ function: "onChange handler", structuralHash: "x" }),
+				entry({ function: "onChange handler", structuralHash: "x" }),
+			]),
+		).toHaveLength(0);
+		// Placeholder-named anonymous functions are skipped too.
+		expect(
+			findDuplicates([
+				entry({ function: "<callback>", structuralHash: "y" }),
+				entry({ function: "<callback>", structuralHash: "y" }),
+			]),
+		).toHaveLength(0);
+		// Named declarations are still grouped.
+		expect(
+			findDuplicates([
+				entry({ function: "importCsv", structuralHash: "z" }),
+				entry({ function: "importCsv", structuralHash: "z" }),
+			]),
+		).toHaveLength(1);
+	});
+
 	it("sorts most-copied groups first", () => {
 		const groups = findDuplicates([
 			entry({ structuralHash: "pair", function: "p1" }),

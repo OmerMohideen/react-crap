@@ -2,6 +2,18 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import picomatch from "picomatch";
+import {
+	analyzeArchitecture,
+	formatArchGithub,
+	formatArchHuman,
+	formatArchJson,
+} from "./arch.js";
+import {
+	formatAuditGithub,
+	formatAuditHuman,
+	formatAuditJson,
+	runAudit,
+} from "./audit.js";
 import { hashFile, loadCache, saveCache } from "./cache.js";
 import { analyzeComplexity } from "./complexity.js";
 import { loadConfig } from "./config.js";
@@ -20,23 +32,32 @@ import {
 	formatDuplicatesJson,
 } from "./duplicates.js";
 import { getChangedFiles } from "./git.js";
-import { getChangedLineRanges } from "./git-diff.js";
+import { isLineChanged, safeChangedRanges } from "./git-diff.js";
 import { merge } from "./merge.js";
 import { formatGithub } from "./report/github.js";
+import { banner, healthScore, scoreFooter } from "./report/health.js";
 import { formatHtml } from "./report/html.js";
 import { formatHuman } from "./report/human.js";
 import { formatDeltaJson, formatJson } from "./report/json.js";
 import { formatMarkdown } from "./report/markdown.js";
 import { formatPrComment } from "./report/pr-comment.js";
 import { formatSarif } from "./report/sarif.js";
+import { schemaUrl } from "./report/schema.js";
 import { filter, score, sortEntries } from "./score.js";
 import {
 	collectSmells,
+	effectiveKinds,
 	formatSmellsGithub,
 	formatSmellsHuman,
 	formatSmellsJson,
-	resolveKinds,
+	smellSeverityCounts,
 } from "./smells.js";
+import {
+	analyzeSupplyChain,
+	formatSupplyChainGithub,
+	formatSupplyChainHuman,
+	formatSupplyChainJson,
+} from "./supply-chain.js";
 import { checkForUpdate, getLocalVersion } from "./version-check.js";
 import { walkFiles } from "./walker.js";
 
@@ -72,6 +93,12 @@ export interface RunOptions {
 	smellKinds?: string;
 	deadCode?: boolean;
 	checks?: boolean;
+	auditDeps?: boolean;
+	auditSupplyChain?: boolean;
+	arch?: boolean;
+	failOnFindings?: boolean;
+	score?: boolean;
+	minScore?: number;
 }
 
 export async function run(rawOptions: RunOptions): Promise<void> {
@@ -201,26 +228,107 @@ async function runOnce(
 		smellKinds: rawOptions.smellKinds,
 		deadCode: rawOptions.deadCode ?? false,
 		checks: rawOptions.checks ?? false,
+		auditDeps: rawOptions.auditDeps ?? false,
+		auditSupplyChain: rawOptions.auditSupplyChain ?? false,
+		arch: rawOptions.arch ?? false,
+		failOnFindings: rawOptions.failOnFindings || config.failOnFindings || false,
+		score: rawOptions.score ?? false,
+		minScore: rawOptions.minScore ?? config.minScore,
 	};
+
+	// --score / --min-score run on the combined coverage-free checks.
+	const wantsScore = options.score || options.minScore !== undefined;
+	if (
+		wantsScore &&
+		!options.duplicates &&
+		!options.smells &&
+		!options.deadCode &&
+		!options.auditDeps
+	) {
+		options.checks = true;
+	}
 
 	const log = (message: string) => {
 		if (options.verbose) console.error(`[react-crap] ${message}`);
 	};
 
+	// Zero-config audit: no mode chosen, no --lcov passed, and no coverage file
+	// on disk → run the coverage-free checks so a bare `npx react-crap` always
+	// does something useful instead of erroring. An explicit --lcov still falls
+	// through to the coverage read (which reports a clear error if it's missing).
+	const anyCheckMode =
+		options.duplicates ||
+		options.smells ||
+		options.deadCode ||
+		options.checks ||
+		options.auditDeps ||
+		options.auditSupplyChain ||
+		options.arch;
 	if (
-		!options.lcov &&
-		!options.duplicates &&
-		!options.smells &&
-		!options.deadCode &&
-		!options.checks
+		!anyCheckMode &&
+		rawOptions.lcov === undefined &&
+		!existsSync(resolve(options.lcov as string))
 	) {
-		throw new Error(
-			"--lcov is required. Generate an LCOV report first (e.g. `npx vitest run --coverage` or `npx jest --coverage`).",
+		options.checks = true;
+		console.error(
+			`No LCOV coverage file at ${resolve(options.lcov as string)}. ` +
+				`Running coverage-free audit (duplicates + smells + dead code).\n` +
+				`For the CRAP score, generate coverage first (e.g. \`npx vitest run --coverage\`) then re-run.\n`,
 		);
 	}
 
 	if (!["pessimistic", "optimistic", "skip"].includes(options.missing)) {
 		throw new Error(`Invalid --missing policy: ${options.missing}`);
+	}
+
+	// Dependency audit: source-independent (scans the lockfile, not .ts files),
+	// so short-circuit before any file walking or coverage parsing.
+	if (options.auditDeps) {
+		const vulns = runAudit(resolve(options.path));
+		log(`npm audit: ${vulns.length} vulnerable dependency(ies)`);
+		const version = getLocalVersion();
+		const output =
+			options.format === "json"
+				? formatAuditJson(vulns, version)
+				: options.format === "github"
+					? formatAuditGithub(vulns)
+					: formatAuditHuman(vulns, { noColor: options.noColor });
+		if (options.output) {
+			writeFileSync(resolve(options.output), `${output}\n`, "utf-8");
+		} else {
+			console.log(output);
+		}
+		const updateMessage = await updatePromise;
+		if (updateMessage) console.error(`\n${updateMessage}\n`);
+		return {
+			watchedPaths,
+			exitCode: options.failOnFindings && vulns.length > 0 ? 1 : 0,
+		};
+	}
+
+	// Supply-chain heuristics: also source-independent (reads package.json and
+	// node_modules manifests), so short-circuit alongside the dependency audit.
+	if (options.auditSupplyChain) {
+		const findings = analyzeSupplyChain(resolve(options.path));
+		log(`supply-chain: ${findings.length} finding(s)`);
+		const version = getLocalVersion();
+		const output =
+			options.format === "json"
+				? formatSupplyChainJson(findings, version)
+				: options.format === "github"
+					? formatSupplyChainGithub(findings)
+					: formatSupplyChainHuman(findings, { noColor: options.noColor });
+		if (options.output) {
+			writeFileSync(resolve(options.output), `${output}\n`, "utf-8");
+		} else {
+			console.log(output);
+		}
+		const updateMessage = await updatePromise;
+		if (updateMessage) console.error(`\n${updateMessage}\n`);
+		return {
+			watchedPaths,
+			exitCode: options.failOnFindings && findings.length > 0 ? 1 : 0,
+		};
 	}
 
 	// Determine paths to analyze
@@ -252,6 +360,49 @@ async function runOnce(
 		}
 	}
 
+	// Architecture analysis needs the whole import graph, so it runs on the full
+	// file set (before any --changed filtering) and short-circuits here.
+	if (options.arch) {
+		if (allFiles.length === 0) {
+			throw new Error(
+				`No .ts/.tsx files found in ${resolve(options.path)}. Check --path and --exclude flags.`,
+			);
+		}
+		const tsPath = resolveTsPath(resolve(options.path));
+		const result = await analyzeArchitecture(
+			allFiles.map((f) => f.path),
+			tsPath,
+		);
+		log(
+			`arch: ${result.cycles.length} cycle(s), ${result.barrels.length} barrel(s)`,
+		);
+		const version = getLocalVersion();
+		const output =
+			options.format === "json"
+				? formatArchJson(result, version)
+				: options.format === "github"
+					? formatArchGithub(result)
+					: formatArchHuman(result, {
+							rootPath: resolve(options.path),
+							noColor: options.noColor,
+						});
+		if (options.output) {
+			writeFileSync(resolve(options.output), `${output}\n`, "utf-8");
+		} else {
+			console.log(output);
+		}
+		const updateMessage = await updatePromise;
+		if (updateMessage) console.error(`\n${updateMessage}\n`);
+		const findings = result.cycles.length + result.barrels.length;
+		return {
+			watchedPaths,
+			exitCode: options.failOnFindings && findings > 0 ? 1 : 0,
+		};
+	}
+
+	// Changed-line ranges power line-level (diff-only) scoping for every mode.
+	// Computed once here, after the file-level filter, and reused below.
+	let changedRanges: Map<string, Set<number>> | undefined;
 	if (options.changed) {
 		const changedFiles = new Set(getChangedFiles(resolve(options.path)));
 		const beforeCount = allFiles.length;
@@ -262,6 +413,7 @@ async function runOnce(
 					"Changed files may be outside --path or excluded by --exclude.",
 			);
 		}
+		changedRanges = safeChangedRanges(resolve(options.path));
 		log(`Filtered to ${allFiles.length} changed file(s) (from ${beforeCount})`);
 	}
 
@@ -276,10 +428,14 @@ async function runOnce(
 	// before coverage and complexity analysis.
 	if (options.deadCode) {
 		const tsPath = resolveTsPath(resolve(options.path));
-		const dead = await findDeadImports(
+		let dead = await findDeadImports(
 			allFiles.map((f) => f.path),
 			tsPath,
 		);
+		if (changedRanges) {
+			const ranges = changedRanges;
+			dead = dead.filter((d) => isLineChanged(d.file, d.line, d.line, ranges));
+		}
 		log(`Found ${dead.length} unused import(s)`);
 		const version = getLocalVersion();
 		const output =
@@ -298,7 +454,10 @@ async function runOnce(
 		}
 		const updateMessage = await updatePromise;
 		if (updateMessage) console.error(`\n${updateMessage}\n`);
-		return { watchedPaths, exitCode: 0 };
+		return {
+			watchedPaths,
+			exitCode: options.failOnFindings && dead.length > 0 ? 1 : 0,
+		};
 	}
 
 	// Parse coverage (skipped in --duplicates/--smells modes, which need none)
@@ -370,6 +529,19 @@ async function runOnce(
 	let complexity = [...cachedEntries, ...freshEntries];
 	log(`Found ${complexity.length} function(s)`);
 
+	// Diff-only scoping: keep only functions overlapping a changed line. Covers
+	// every downstream consumer (duplicates, smells, checks, and the CRAP path).
+	if (changedRanges) {
+		const ranges = changedRanges;
+		const beforeCount = complexity.length;
+		complexity = complexity.filter((e) =>
+			isLineChanged(e.file, e.line, e.endLine, ranges),
+		);
+		log(
+			`Filtered to ${complexity.length} changed function(s) (from ${beforeCount})`,
+		);
+	}
+
 	// Duplicate detection: group functions by body hash, report clones. Runs
 	// independently of coverage/scoring, so short-circuit here.
 	if (options.duplicates) {
@@ -400,14 +572,19 @@ async function runOnce(
 		}
 		const updateMessage = await updatePromise;
 		if (updateMessage) console.error(`\n${updateMessage}\n`);
-		// ponytail: report-only — doesn't reuse --fail-above (that gates CRAP
-		// scores). Add a dedicated --fail-on-duplicates if CI gating is wanted.
-		return { watchedPaths, exitCode: 0 };
+		// --fail-above gates CRAP scores; --fail-on-findings gates the checks.
+		return {
+			watchedPaths,
+			exitCode: options.failOnFindings && groups.length > 0 ? 1 : 0,
+		};
 	}
 
 	// AI-slop smell detection. Also coverage-independent — short-circuit here.
 	if (options.smells) {
-		const rows = collectSmells(complexity, resolveKinds(options.smellKinds));
+		const rows = collectSmells(
+			complexity,
+			effectiveKinds(options.smellKinds, config.rules),
+		);
 		log(`Found smells in ${rows.length} function(s)`);
 		const version = getLocalVersion();
 		const output =
@@ -418,6 +595,7 @@ async function runOnce(
 					: formatSmellsHuman(rows, {
 							rootPath: resolve(options.path),
 							noColor: options.noColor,
+							rules: config.rules,
 						});
 		if (options.output) {
 			writeFileSync(resolve(options.output), `${output}\n`, "utf-8");
@@ -426,8 +604,10 @@ async function runOnce(
 		}
 		const updateMessage = await updatePromise;
 		if (updateMessage) console.error(`\n${updateMessage}\n`);
-		// ponytail: report-only. Add --fail-on-smells for CI gating if wanted.
-		return { watchedPaths, exitCode: 0 };
+		return {
+			watchedPaths,
+			exitCode: options.failOnFindings && rows.length > 0 ? 1 : 0,
+		};
 	}
 
 	// Combined report: all coverage-independent AST checks in one pass. Built
@@ -437,20 +617,47 @@ async function runOnce(
 		const dups = findDuplicates(complexity);
 		const smellRows = collectSmells(
 			complexity,
-			resolveKinds(options.smellKinds),
+			effectiveKinds(options.smellKinds, config.rules),
 		);
-		const dead = await findDeadImports(
+		let dead = await findDeadImports(
 			allFiles.map((f) => f.path),
 			resolveTsPath(resolve(options.path)),
 		);
+		if (changedRanges) {
+			const ranges = changedRanges;
+			dead = dead.filter((d) => isLineChanged(d.file, d.line, d.line, ranges));
+		}
 		log(
 			`checks: ${dups.length} dup group(s), ${smellRows.length} smelly fn(s), ${dead.length} dead import(s)`,
 		);
 
+		// Combined severity: smell buckets + each dup group as a warning and each
+		// dead import as a note. Drives both the footer and the score gate.
+		const sev = smellSeverityCounts(smellRows, config.rules);
+		sev.warn += dups.length;
+		sev.note += dead.length;
+		const score = healthScore(sev);
+
 		let output: string;
-		if (options.format === "json") {
+		if (options.score) {
+			// Score-only: a single number for badges / quick gates.
+			output =
+				options.format === "json"
+					? JSON.stringify(
+							{
+								$schema: schemaUrl("checks-v1.json"),
+								version,
+								score,
+								counts: sev,
+							},
+							null,
+							2,
+						)
+					: scoreFooter(sev, options.noColor);
+		} else if (options.format === "json") {
 			output = JSON.stringify(
 				{
+					$schema: schemaUrl("checks-v1.json"),
 					version,
 					duplicates: dups,
 					smells: smellRows,
@@ -471,12 +678,20 @@ async function runOnce(
 			const rootPath = resolve(options.path);
 			const nc = options.noColor;
 			output = [
+				banner("checks", nc),
 				"━━ Duplicates ━━",
 				formatDuplicatesHuman(dups, { rootPath, noColor: nc }),
 				"\n━━ Smells ━━",
-				formatSmellsHuman(smellRows, { rootPath, noColor: nc }),
+				formatSmellsHuman(smellRows, {
+					rootPath,
+					noColor: nc,
+					compact: true,
+					rules: config.rules,
+				}),
 				"\n━━ Dead code ━━",
 				formatDeadCodeHuman(dead, { rootPath, noColor: nc }),
+				"",
+				scoreFooter(sev, nc),
 			].join("\n");
 		}
 
@@ -487,9 +702,14 @@ async function runOnce(
 		}
 		const updateMessage = await updatePromise;
 		if (updateMessage) console.error(`\n${updateMessage}\n`);
-		// ponytail: report-only so it never blocks a commit. Add --fail-on-checks
-		// if a gating hook is wanted.
-		return { watchedPaths, exitCode: 0 };
+		const findings = dups.length + smellRows.length + dead.length;
+		const failFindings = options.failOnFindings && findings > 0;
+		const failScore =
+			options.minScore !== undefined && score < options.minScore;
+		return {
+			watchedPaths,
+			exitCode: failFindings || failScore ? 1 : 0,
+		};
 	}
 
 	// Attach package info to complexity entries
@@ -498,33 +718,13 @@ async function runOnce(
 		(c as any).package = fileToPackage.get(c.file) ?? "default";
 	}
 
-	// Function-level filter: only include functions whose line range overlaps changed lines
-	if (options.changed) {
-		const changedRanges = getChangedLineRanges(resolve(options.path));
-		// Normalize map keys to forward slashes for consistent lookup
-		// TypeScript sourceFile.fileName uses forward slashes on all platforms
-		const normalizedRanges = new Map<string, Set<number>>();
-		for (const [file, lines] of changedRanges) {
-			normalizedRanges.set(file.replace(/\\/g, "/"), lines);
-		}
-		const beforeCount = complexity.length;
-		complexity = complexity.filter((entry) => {
-			const fileLines = normalizedRanges.get(entry.file);
-			if (!fileLines) return false;
-			for (let l = entry.line; l <= entry.endLine; l++) {
-				if (fileLines.has(l)) return true;
-			}
-			return false;
-		});
-		log(
-			`Filtered to ${complexity.length} changed function(s) (from ${beforeCount})`,
+	// complexity was already scoped to changed lines above (shared by all modes).
+	// For the CRAP path an empty result is a usage error worth surfacing.
+	if (options.changed && complexity.length === 0) {
+		throw new Error(
+			"No changed functions found in the analyzed path. " +
+				"Changed lines may be outside any function body.",
 		);
-		if (complexity.length === 0) {
-			throw new Error(
-				"No changed functions found in the analyzed path. " +
-					"Changed lines may be outside any function body.",
-			);
-		}
 	}
 
 	// Merge

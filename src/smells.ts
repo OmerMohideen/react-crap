@@ -1,7 +1,14 @@
 import { relative } from "node:path";
 import Table from "cli-table3";
 import pc from "picocolors";
-import type { ComplexityEntry, Smell, SmellKind } from "./complexity.js";
+import {
+	ALL_SMELL_KINDS,
+	type ComplexityEntry,
+	type Smell,
+	type SmellKind,
+} from "./complexity.js";
+import { banner, type SeverityCounts, scoreFooter } from "./report/health.js";
+import { schemaUrl } from "./report/schema.js";
 
 export interface SmellRow {
 	file: string;
@@ -27,31 +34,35 @@ export function resolveKinds(filter?: string): SmellKind[] | undefined {
 }
 
 function allKindsExcept(exclude: SmellKind[]): SmellKind[] {
-	const all: SmellKind[] = [
-		"effect-missing-deps",
-		"effect-missing-cleanup",
-		"effect-derived-state",
-		"unstable-prop",
-		"type-any",
-		"non-null-assertion",
-		"as-any",
-		"ts-suppress",
-		"console",
-		"todo",
-		"placeholder",
-		"index-as-key",
-		"passthrough-wrapper",
-		"test-no-assert",
-	];
 	const ex = new Set(exclude);
-	return all.filter((k) => !ex.has(k));
+	return ALL_SMELL_KINDS.filter((k) => !ex.has(k));
+}
+
+// Apply user rule overrides from config on top of the CLI-selected kind set.
+// `rules` maps a kind to true (force-on, even if noisy/deselected) or false
+// (disable). Returns the concrete kind list to scan.
+export function effectiveKinds(
+	filter?: string,
+	rules?: Record<string, RuleValue>,
+): SmellKind[] {
+	const base = resolveKinds(filter) ?? ALL_SMELL_KINDS;
+	if (!rules) return [...base];
+	const set = new Set<SmellKind>(base);
+	for (const [kind, on] of Object.entries(rules)) {
+		if (on) set.add(kind as SmellKind);
+		else set.delete(kind as SmellKind);
+	}
+	// Preserve the canonical order for stable output.
+	return ALL_SMELL_KINDS.filter((k) => set.has(k));
 }
 
 export function collectSmells(
 	complexity: ComplexityEntry[],
 	only?: SmellKind[],
 ): SmellRow[] {
-	const onlySet = only && only.length > 0 ? new Set(only) : undefined;
+	// undefined => all kinds; an explicit list (even empty) is used as-is, so
+	// disabling every kind via config yields no findings rather than all.
+	const onlySet = only ? new Set(only) : undefined;
 	const rows: SmellRow[] = [];
 	for (const e of complexity) {
 		const smells = onlySet
@@ -79,6 +90,11 @@ const BUG_KINDS = new Set<SmellKind>([
 	"effect-missing-cleanup",
 	"index-as-key",
 	"test-no-assert",
+	"component-in-render",
+	"dangerous-html",
+	"eval-usage",
+	"target-blank",
+	"href-javascript",
 ]);
 const HOUSEKEEPING_KINDS = new Set<SmellKind>([
 	"console",
@@ -86,15 +102,51 @@ const HOUSEKEEPING_KINDS = new Set<SmellKind>([
 	"placeholder",
 ]);
 
+// A config rule value: enable/disable, or enable with a severity override.
+export type RuleValue = boolean | "error" | "warn" | "note";
+
+// Display severity of a kind: a config "error"/"warn"/"note" override wins,
+// otherwise the static bucket (BUG → high, housekeeping → note, else warn).
+export function resolveSeverity(
+	kind: SmellKind,
+	rules?: Record<string, RuleValue>,
+): "high" | "warn" | "note" {
+	const ov = rules?.[kind];
+	if (ov === "error") return "high";
+	if (ov === "warn") return "warn";
+	if (ov === "note") return "note";
+	if (BUG_KINDS.has(kind)) return "high";
+	if (HOUSEKEEPING_KINDS.has(kind)) return "note";
+	return "warn";
+}
+
+// Collapse smell kinds into the three display severities for the score footer.
+export function smellSeverityCounts(
+	rows: SmellRow[],
+	rules?: Record<string, RuleValue>,
+): SeverityCounts {
+	const c: SeverityCounts = { high: 0, warn: 0, note: 0 };
+	for (const r of rows) {
+		for (const s of r.smells) c[resolveSeverity(s.kind, rules)]++;
+	}
+	return c;
+}
+
 export function formatSmellsHuman(
 	rows: SmellRow[],
-	opts: { rootPath?: string; noColor?: boolean } = {},
+	opts: {
+		rootPath?: string;
+		noColor?: boolean;
+		compact?: boolean;
+		rules?: Record<string, RuleValue>;
+	} = {},
 ): string {
 	const id = (s: string) => s;
 	const c = opts.noColor ? { yellow: id, gray: id, red: id, dim: id } : pc;
 	const paintKind = (kind: string) => {
-		if (BUG_KINDS.has(kind as SmellKind)) return c.red(kind);
-		if (HOUSEKEEPING_KINDS.has(kind as SmellKind)) return c.dim(kind);
+		const sev = resolveSeverity(kind as SmellKind, opts.rules);
+		if (sev === "high") return c.red(kind);
+		if (sev === "note") return c.dim(kind);
 		return c.yellow(kind);
 	};
 	const loc = (file: string, line: number) =>
@@ -103,7 +155,12 @@ export function formatSmellsHuman(
 			: `${file}:${line}`;
 
 	if (rows.length === 0) {
-		return c.gray("No AI-slop smells found.");
+		if (opts.compact) return c.gray("No AI-slop smells found.");
+		return [
+			banner("smells", opts.noColor),
+			c.gray("No AI-slop smells found."),
+			scoreFooter({ high: 0, warn: 0, note: 0 }, opts.noColor),
+		].join("\n");
 	}
 
 	const table = new Table({
@@ -143,10 +200,16 @@ export function formatSmellsHuman(
 		.map(([k, n]) => `${paintKind(k)}: ${n}`)
 		.join("  ");
 
-	return [
+	const lines = [
 		c.yellow(`Found ${total} smell(s) in ${rows.length} function(s):`),
 		table.toString() as string,
 		c.gray(summary),
+	];
+	if (opts.compact) return lines.join("\n");
+	return [
+		banner("smells", opts.noColor),
+		...lines,
+		scoreFooter(smellSeverityCounts(rows, opts.rules), opts.noColor),
 	].join("\n");
 }
 
@@ -167,7 +230,12 @@ export function formatSmellsGithub(rows: SmellRow[]): string {
 
 export function formatSmellsJson(rows: SmellRow[], version: string): string {
 	return JSON.stringify(
-		{ version, counts: countByKind(rows), smells: rows },
+		{
+			$schema: schemaUrl("smells-v1.json"),
+			version,
+			counts: countByKind(rows),
+			smells: rows,
+		},
 		null,
 		2,
 	);

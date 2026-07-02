@@ -3,6 +3,7 @@ import { relative } from "node:path";
 import Table from "cli-table3";
 import pc from "picocolors";
 import { scriptKind } from "./complexity.js";
+import { schemaUrl } from "./report/schema.js";
 
 export interface DeadImport {
 	file: string;
@@ -112,5 +113,9 @@ export function formatDeadCodeJson(
 	dead: DeadImport[],
 	version: string,
 ): string {
-	return JSON.stringify({ version, deadImports: dead }, null, 2);
+	return JSON.stringify(
+		{ $schema: schemaUrl("dead-code-v1.json"), version, deadImports: dead },
+		null,
+		2,
+	);
 }

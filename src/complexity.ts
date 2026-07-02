@@ -15,13 +15,81 @@ export type SmellKind =
 	| "placeholder"
 	| "index-as-key"
 	| "passthrough-wrapper"
-	| "test-no-assert";
+	| "test-no-assert"
+	| "component-in-render"
+	| "dangerous-html"
+	| "eval-usage"
+	| "loose-equality"
+	| "var-keyword"
+	| "img-no-alt"
+	| "button-no-type"
+	| "anchor-no-href"
+	| "positive-tabindex"
+	| "target-blank"
+	| "href-javascript"
+	| "redundant-role"
+	| "no-autofocus"
+	| "label-no-control";
+
+// Canonical list of every smell kind — single source of truth shared by the
+// smell engine, the default-set logic, and config validation.
+export const ALL_SMELL_KINDS: SmellKind[] = [
+	"effect-missing-deps",
+	"effect-missing-cleanup",
+	"effect-derived-state",
+	"unstable-prop",
+	"type-any",
+	"non-null-assertion",
+	"as-any",
+	"ts-suppress",
+	"console",
+	"todo",
+	"placeholder",
+	"index-as-key",
+	"passthrough-wrapper",
+	"test-no-assert",
+	"component-in-render",
+	"dangerous-html",
+	"eval-usage",
+	"loose-equality",
+	"var-keyword",
+	"img-no-alt",
+	"button-no-type",
+	"anchor-no-href",
+	"positive-tabindex",
+	"target-blank",
+	"href-javascript",
+	"redundant-role",
+	"no-autofocus",
+	"label-no-control",
+];
 
 export interface Smell {
 	kind: SmellKind;
 	detail: string;
 	line: number;
 }
+
+// Implicit ARIA roles for common intrinsic elements — used to flag a `role`
+// attribute that just restates the element's built-in role. Conservative set
+// (only unambiguous mappings; `a` → link handled separately, needs href).
+const IMPLICIT_ROLE: Record<string, string> = {
+	button: "button",
+	nav: "navigation",
+	main: "main",
+	ul: "list",
+	ol: "list",
+	li: "listitem",
+	table: "table",
+	form: "form",
+	img: "img",
+	h1: "heading",
+	h2: "heading",
+	h3: "heading",
+	h4: "heading",
+	h5: "heading",
+	h6: "heading",
+};
 
 // Parse .ts as TS (not TSX) so generic arrows `const f = <T>(x) =>` aren't
 // misread as JSX. Only .tsx/.jsx get the JSX grammar.
@@ -454,14 +522,31 @@ async function analyzeFile(
 			else if (tsMod.isJsxElement(ret))
 				attrs = ret.openingElement?.attributes?.properties;
 			if (!attrs) return;
-			if (attrs.some((a: any) => tsMod.isJsxSpreadAttribute(a))) {
-				smells.push({
-					kind: "passthrough-wrapper",
-					detail:
-						"component only spreads props into one element (no value added)",
-					line: lineOf(fnNode),
-				});
+
+			// Pure passthrough = the element's ONLY attribute is a spread and it has
+			// no children. Anything else (other props, children) adds value, so it's
+			// not a do-nothing wrapper. <a target rel href {...p}>{children}</a> and
+			// <ul {...p} className>{items}</ul> are NOT passthroughs.
+			const spreads = attrs.filter((a: any) => tsMod.isJsxSpreadAttribute(a));
+			const others = attrs.filter((a: any) => !tsMod.isJsxSpreadAttribute(a));
+			if (spreads.length === 0 || others.length > 0) return;
+			if (tsMod.isJsxElement(ret)) {
+				const kids = (ret.children ?? []).filter((k: any) =>
+					tsMod.isJsxText(k) ? k.text.trim().length > 0 : true,
+				);
+				if (kids.length > 0) return;
 			}
+			// Passthrough is a component concept — skip anonymous inline callbacks
+			// (useMemo/map callbacks etc.), whose resolved names carry a space or "<".
+			const fnName = getFunctionName(fnNode);
+			if (/\s/.test(fnName) || fnName.startsWith("<")) return;
+
+			smells.push({
+				kind: "passthrough-wrapper",
+				detail:
+					"component only spreads props into one element (no value added)",
+				line: lineOf(fnNode),
+			});
 		})();
 
 		// Assertion-less test: an it()/test() callback with no expect()/assert().
@@ -509,12 +594,27 @@ async function analyzeFile(
 			let subscribes = false;
 			const SUB =
 				/^(addEventListener|setInterval|setTimeout|subscribe|addListener|on)$/;
+
+			// A concise arrow returns its body expression as the cleanup, e.g.
+			// `useEffect(() => store.subscribe(fn), [])` — subscribe() returns the
+			// unsubscribe function. Treat a returned call expression as cleanup.
+			const isCleanupExpr = (e: any): boolean =>
+				e &&
+				(tsMod.isArrowFunction(e) ||
+					tsMod.isFunctionExpression(e) ||
+					tsMod.isCallExpression(e));
+			let body0 = cb.body;
+			while (body0 && tsMod.isParenthesizedExpression(body0))
+				body0 = body0.expression;
+			if (body0 && !tsMod.isBlock(body0) && isCleanupExpr(body0)) {
+				returnsFn = true;
+			}
+
 			(function scan(n: any) {
 				if (
 					tsMod.isReturnStatement(n) &&
 					n.expression &&
-					(tsMod.isArrowFunction(n.expression) ||
-						tsMod.isFunctionExpression(n.expression))
+					isCleanupExpr(n.expression)
 				) {
 					returnsFn = true;
 				}
@@ -536,13 +636,23 @@ async function analyzeFile(
 			}
 
 			// "You might not need an effect": body does nothing but call setters.
+			// A state setter is a BARE identifier `setX(...)` — not a property-access
+			// call like `localStorage.setItem(...)` and not a timer (`setTimeout`).
+			const isStateSetter = (callExpr: any): boolean => {
+				const e = callExpr.expression;
+				return (
+					tsMod.isIdentifier(e) &&
+					/^set[A-Z]/.test(e.text) &&
+					!/^set(Timeout|Interval|Immediate)$/.test(e.text)
+				);
+			};
 			const body = cb.body;
 			if (body && tsMod.isBlock(body) && body.statements.length > 0) {
 				const allSetters = body.statements.every(
 					(s: any) =>
 						tsMod.isExpressionStatement(s) &&
 						tsMod.isCallExpression(s.expression) &&
-						/^set[A-Z]/.test(calleeName(s.expression.expression) ?? ""),
+						isStateSetter(s.expression),
 				);
 				if (allSetters) {
 					smells.push({
@@ -560,6 +670,16 @@ async function analyzeFile(
 		]);
 		function checkJsxAttr(attr: any) {
 			const attrName = tsMod.isIdentifier(attr.name) ? attr.name.text : "";
+
+			if (attrName === "dangerouslySetInnerHTML") {
+				smells.push({
+					kind: "dangerous-html",
+					detail: "dangerouslySetInnerHTML (XSS risk — sanitize the HTML)",
+					line: lineOf(attr),
+				});
+				return;
+			}
+
 			const init = attr.initializer;
 			if (!init || !tsMod.isJsxExpression(init) || !init.expression) return;
 			const expr = init.expression;
@@ -593,14 +713,204 @@ async function analyzeFile(
 			}
 		}
 
+		// Static string value of a JSX attribute, or undefined if dynamic/boolean.
+		const attrString = (attr: any): string | undefined => {
+			const init = attr.initializer;
+			if (!init) return undefined; // boolean shorthand, e.g. `disabled`
+			if (tsMod.isStringLiteral(init)) return init.text;
+			if (
+				tsMod.isJsxExpression(init) &&
+				init.expression &&
+				tsMod.isStringLiteral(init.expression)
+			)
+				return init.expression.text;
+			return undefined;
+		};
+		const attrNumber = (attr: any): number | undefined => {
+			const init = attr.initializer;
+			if (
+				init &&
+				tsMod.isJsxExpression(init) &&
+				init.expression &&
+				tsMod.isNumericLiteral(init.expression)
+			)
+				return Number(init.expression.text);
+			if (init && tsMod.isStringLiteral(init)) {
+				const n = Number(init.text);
+				return Number.isNaN(n) ? undefined : n;
+			}
+			return undefined;
+		};
+
+		// Element-level accessibility + security rules on intrinsic (lowercase)
+		// elements. Custom components (<Button/>) are skipped — they own their a11y.
+		function checkJsxElement(el: any) {
+			const tag = el.tagName;
+			if (!tsMod.isIdentifier(tag) || !/^[a-z]/.test(tag.text)) return;
+			const tagName = tag.text;
+			const props = el.attributes?.properties ?? [];
+			const attrs = props.filter((a: any) => tsMod.isJsxAttribute(a));
+			const spread = props.some((a: any) => tsMod.isJsxSpreadAttribute(a));
+			const get = (n: string) =>
+				attrs.find((a: any) => tsMod.isIdentifier(a.name) && a.name.text === n);
+			const line = lineOf(el);
+
+			if (tagName === "img" && !get("alt") && !spread) {
+				smells.push({
+					kind: "img-no-alt",
+					detail: "<img> has no alt attribute (a11y)",
+					line,
+				});
+			}
+			if (tagName === "button" && !get("type") && !spread) {
+				smells.push({
+					kind: "button-no-type",
+					detail: '<button> has no type (defaults to "submit")',
+					line,
+				});
+			}
+			if (tagName === "a") {
+				const href = get("href");
+				if (!href && !spread) {
+					smells.push({
+						kind: "anchor-no-href",
+						detail: "<a> has no href (use a button for actions)",
+						line,
+					});
+				}
+				const hv = href && attrString(href);
+				if (hv && /^\s*javascript:/i.test(hv)) {
+					smells.push({
+						kind: "href-javascript",
+						detail: 'href="javascript:" (XSS / injection risk)',
+						line,
+					});
+				}
+				const target = get("target");
+				if (target && attrString(target) === "_blank") {
+					const rel = get("rel");
+					const rv = rel ? (attrString(rel) ?? "") : "";
+					if (!rel || !/noopener|noreferrer/.test(rv)) {
+						smells.push({
+							kind: "target-blank",
+							detail: 'target="_blank" without rel="noopener" (tabnabbing)',
+							line,
+						});
+					}
+				}
+			}
+			const ti = get("tabIndex") ?? get("tabindex");
+			if (ti) {
+				const v = attrNumber(ti);
+				if (v !== undefined && v > 0) {
+					smells.push({
+						kind: "positive-tabindex",
+						detail: `tabIndex={${v}} disrupts natural tab order (use 0 or -1)`,
+						line,
+					});
+				}
+			}
+
+			// autoFocus steals focus on mount — disorienting for AT users.
+			if (get("autoFocus")) {
+				smells.push({
+					kind: "no-autofocus",
+					detail: "autoFocus prop (steals focus on mount — a11y)",
+					line,
+				});
+			}
+
+			// role that duplicates the element's implicit ARIA role is redundant.
+			const roleAttr = get("role");
+			const roleVal = roleAttr && attrString(roleAttr);
+			if (roleVal) {
+				const implicit =
+					IMPLICIT_ROLE[tagName] ??
+					(tagName === "a" && get("href") ? "link" : undefined);
+				if (implicit && roleVal === implicit) {
+					smells.push({
+						kind: "redundant-role",
+						detail: `role="${roleVal}" is the implicit role of <${tagName}>`,
+						line,
+					});
+				}
+			}
+
+			// <label> with no htmlFor and no nested element can't be associated
+			// with a control. Conservative: text-only labels only (skip if any
+			// child element might be the control).
+			if (tagName === "label" && !get("htmlFor") && !spread) {
+				const parent = el.parent;
+				const kids =
+					parent && tsMod.isJsxElement(parent) ? (parent.children ?? []) : [];
+				const hasElementChild = kids.some(
+					(k: any) =>
+						tsMod.isJsxElement(k) ||
+						tsMod.isJsxSelfClosingElement(k) ||
+						tsMod.isJsxExpression(k),
+				);
+				if (!hasElementChild) {
+					smells.push({
+						kind: "label-no-control",
+						detail: "<label> has no htmlFor and no nested control (a11y)",
+						line,
+					});
+				}
+			}
+		}
+
+		// PascalCase name of a function node (from its own name or its variable
+		// declaration) — i.e. it looks like a React component, not a handler.
+		const pascalName = (n: any): string | undefined => {
+			if (
+				tsMod.isFunctionDeclaration(n) &&
+				n.name &&
+				/^[A-Z]/.test(n.name.text)
+			)
+				return n.name.text;
+			const p = n.parent;
+			if (
+				p &&
+				tsMod.isVariableDeclaration(p) &&
+				tsMod.isIdentifier(p.name) &&
+				/^[A-Z]/.test(p.name.text)
+			)
+				return p.name.text;
+			return undefined;
+		};
+		const outerIsComponent = detectComponent(fnNode, sourceFile, tsMod);
+
 		// Walk own body; do not descend into nested functions (separate entries).
 		(function walk(node: any) {
-			if (node !== fnNode && isFn(node)) return;
+			if (node !== fnNode && isFn(node)) {
+				// A component defined inside another component is remounted (state
+				// lost, subtree torn down) on every render of the parent.
+				const nm = pascalName(node);
+				if (
+					nm &&
+					outerIsComponent &&
+					detectComponent(node, sourceFile, tsMod)
+				) {
+					smells.push({
+						kind: "component-in-render",
+						detail: `component "${nm}" defined inside another component (remounts every render)`,
+						line: lineOf(node),
+					});
+				}
+				return;
+			}
 
 			if (tsMod.isCallExpression(node)) {
 				const name = calleeName(node.expression);
 				if (name === "useEffect" || name === "useLayoutEffect")
 					analyzeEffect(node);
+				if (name === "eval") {
+					smells.push({
+						kind: "eval-usage",
+						detail: "eval() — code injection / XSS risk",
+						line: lineOf(node),
+					});
+				}
 				if (
 					tsMod.isPropertyAccessExpression(node.expression) &&
 					tsMod.isIdentifier(node.expression.expression) &&
@@ -613,7 +923,50 @@ async function analyzeFile(
 					});
 				}
 			}
+			if (
+				tsMod.isNewExpression(node) &&
+				tsMod.isIdentifier(node.expression) &&
+				node.expression.text === "Function"
+			) {
+				smells.push({
+					kind: "eval-usage",
+					detail: "new Function() — dynamic code execution risk",
+					line: lineOf(node),
+				});
+			}
+			if (tsMod.isBinaryExpression(node)) {
+				const op = node.operatorToken.kind;
+				if (op === tsMod.SyntaxKind.EqualsEqualsToken) {
+					smells.push({
+						kind: "loose-equality",
+						detail: "loose equality `==` (use `===`)",
+						line: lineOf(node),
+					});
+				} else if (op === tsMod.SyntaxKind.ExclamationEqualsToken) {
+					smells.push({
+						kind: "loose-equality",
+						detail: "loose inequality `!=` (use `!==`)",
+						line: lineOf(node),
+					});
+				}
+			}
+			if (
+				tsMod.isVariableDeclarationList(node) &&
+				(node.flags & tsMod.NodeFlags.Let) === 0 &&
+				(node.flags & tsMod.NodeFlags.Const) === 0
+			) {
+				smells.push({
+					kind: "var-keyword",
+					detail: "`var` declaration (use `const`/`let`)",
+					line: lineOf(node),
+				});
+			}
 			if (tsMod.isJsxAttribute(node)) checkJsxAttr(node);
+			if (
+				tsMod.isJsxSelfClosingElement(node) ||
+				tsMod.isJsxOpeningElement(node)
+			)
+				checkJsxElement(node);
 			if (node.kind === tsMod.SyntaxKind.AnyKeyword) {
 				smells.push({
 					kind: "type-any",

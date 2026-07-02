@@ -74,6 +74,30 @@ program
 		"Run all coverage-free checks (duplicates + smells + dead code) in one report. Pair with --changed for pre-commit hooks",
 	)
 	.option(
+		"--audit-deps",
+		"Scan dependencies for known vulnerabilities via `npm audit` (no coverage/source needed)",
+	)
+	.option(
+		"--arch",
+		"Report architecture issues: circular imports and bloated barrel files (no coverage needed)",
+	)
+	.option(
+		"--audit-supply-chain",
+		"Flag dependency install/postinstall scripts and typosquat-shaped names (heuristic; reads package.json + node_modules)",
+	)
+	.option(
+		"--score",
+		"Run the coverage-free checks and print only the health score (0-100)",
+	)
+	.option(
+		"--min-score <n>",
+		"Exit 1 if the coverage-free health score is below N (gate on score)",
+	)
+	.option(
+		"--fail-on-findings",
+		"Exit 1 if any coverage-free check (--checks/--smells/--duplicates/--dead-code/--audit-deps) reports a finding",
+	)
+	.option(
 		"--sort <fields>",
 		"Sort display by comma-separated fields: crap, file, name, path, function, line, cc, cyclomatic, coverage, hooks, renderBranches, type",
 		"crap",
@@ -119,6 +143,12 @@ run({
 	smellKinds: typeof options.smells === "string" ? options.smells : undefined,
 	deadCode: options.deadCode ?? false,
 	checks: options.checks ?? false,
+	auditDeps: options.auditDeps ?? false,
+	auditSupplyChain: options.auditSupplyChain ?? false,
+	arch: options.arch ?? false,
+	failOnFindings: options.failOnFindings ?? false,
+	score: options.score ?? false,
+	minScore: options.minScore ? parseFloat(options.minScore) : undefined,
 	sort: options.sort,
 	output: options.output,
 	noColor,

@@ -40,6 +40,10 @@ npm install --save-dev @omermohideen/react-crap
 ## Quick start
 
 ```bash
+# 0. Zero-config: no coverage, no flags. Runs the coverage-free audit
+#    (duplicates + smells + dead code) so you get signal immediately.
+npx @omermohideen/react-crap
+
 # 1. Generate an LCOV coverage report.
 npx vitest run --coverage
 
@@ -100,7 +104,7 @@ Example output:
 | `--workspace` | off | Analyze all workspace packages (discovered via `package.json` workspaces or `pnpm-workspace.yaml`). Ignores `--path`. Adds a *Per-package summary* table to human and markdown output, and a `package` field to JSON entries. |
 | `--verbose` | off | Print step-by-step progress to stderr (file discovery, analysis progress, merge/scoring steps). |
 | `--watch` | off | Re-run automatically when source files or LCOV change. Uses 1-second polling. Press Ctrl+C to stop. |
-| `--changed` | off | Only analyze uncommitted `.ts`/`.tsx` files (modified, staged, and untracked). Useful for pre-commit checks and local iteration. CLI-only; not supported in config. |
+| `--changed` | off | Diff-only mode. Scopes analysis to uncommitted `.ts`/`.tsx` changes (modified, staged, and untracked) **down to the changed lines** — CRAP scores, smells, and duplicates only report functions overlapping a changed line; dead-code only reports imports on changed lines; brand-new files are reported in full. Useful for pre-commit checks and local iteration. CLI-only; not supported in config. |
 | `--fail-above` | off | Exit 1 if any function exceeds `--threshold`. |
 | `--baseline <FILE>` | — | JSON from a previous `--format json` run. Enables delta mode (shows Δ column). Functions that moved between files (same name, body unchanged) are detected and reported as `Moved` rather than as separate New + Removed entries; renderers show `← <previous_file>` next to the new location. |
 | `--fail-regression` | off | Exit 1 if any function's score increased since `--baseline`. `Moved` (pure relocation, no score change) is not a regression. |
@@ -109,10 +113,16 @@ Example output:
 | `--jobs <N>` | host CPUs | Cap parallel source-file analysis at `N` threads. Useful in memory-constrained CI/Docker environments. Must be a positive integer. |
 | `--output <FILE>` | — | Write output to FILE instead of stdout (useful for saving JSON baselines). |
 | `--no-color` | — | Disable colored output. |
-| `--duplicates [mode]` | — | Report duplicate functions instead of CRAP scores. No coverage needed. Default matches reformatted copy-paste; `normalized` also matches Type-2 near-duplicates (renamed/retyped). |
+| `--duplicates [mode]` | — | Report duplicate functions instead of CRAP scores. No coverage needed. Default matches reformatted copy-paste; `normalized` also matches Type-2 near-duplicates (renamed/retyped). Anonymous inline callbacks (event handlers, `useEffect`/`map` callbacks) are skipped — they share shape by nature and aren't extractable. |
 | `--smells [kinds]` | — | Report AI-slop smells instead of CRAP scores. No coverage needed. Noisy `any`/`!` excluded by default; pass `all` or a comma list of kinds. See [Code-review checks](#code-review-checks-no-coverage). |
 | `--dead-code` | — | Report unused imports instead of CRAP scores. No coverage needed. |
 | `--checks` | — | Run **all** coverage-free checks (duplicates + smells + dead code) in one report. Pair with `--changed` for pre-commit hooks. |
+| `--audit-deps` | — | Scan dependencies for known vulnerabilities via your package manager's audit (no coverage or source needed). Detects the lockfile and runs `npm`/`pnpm`/`yarn audit`. Report-only unless `--fail-on-findings`. Kept out of `--checks` (network + slow). |
+| `--arch` | — | Report architecture issues — circular imports and bloated barrel files (no coverage needed). Analyzes the whole import graph, so it ignores `--changed`. Report-only unless `--fail-on-findings`. |
+| `--audit-supply-chain` | — | Heuristic supply-chain check: direct deps with install/postinstall scripts and typosquat-shaped names (one edit from a popular package). Reads `package.json` + `node_modules`; no network. Report-only unless `--fail-on-findings`. Not part of `--checks`. |
+| `--fail-on-findings` | off | Exit 1 if any coverage-free check (`--checks` / `--smells` / `--duplicates` / `--dead-code` / `--audit-deps`) reports a finding. The CI gate for the checks, mirroring `--fail-above` for CRAP scores. |
+| `--score` | — | Run the coverage-free checks and print only the health score (0–100). With `--format json`, emits `{ score, counts }`. Good for badges / dashboards. |
+| `--min-score <N>` | — | Exit 1 if the coverage-free health score is below `N`. Score gate (runs `--checks`). |
 
 ### Filtering order
 
@@ -138,6 +148,7 @@ Any flag can be set persistently in `.react-crap.json` at the project root (or a
   "exclude": ["**/*.test.ts", "**/*.test.tsx"],
   "allow": ["src/generated/**"],
   "failAbove": true,
+  "failOnFindings": false,
   "workspace": false,
   "verbose": false,
   "sort": "crap"
@@ -192,6 +203,15 @@ Complexity analysis results are cached in `.react-crap-cache.json` (created next
 |---------|--------|
 | Absolute (no `--baseline`) | [`schemas/report-v1.json`](https://raw.githubusercontent.com/OmerMohideen/react-crap/master/schemas/report-v1.json) |
 | Delta (with `--baseline`) | [`schemas/delta-v2.json`](https://raw.githubusercontent.com/OmerMohideen/react-crap/master/schemas/delta-v2.json) |
+| `--smells` | [`schemas/smells-v1.json`](https://raw.githubusercontent.com/OmerMohideen/react-crap/master/schemas/smells-v1.json) |
+| `--duplicates` | [`schemas/duplicates-v1.json`](https://raw.githubusercontent.com/OmerMohideen/react-crap/master/schemas/duplicates-v1.json) |
+| `--dead-code` | [`schemas/dead-code-v1.json`](https://raw.githubusercontent.com/OmerMohideen/react-crap/master/schemas/dead-code-v1.json) |
+| `--checks` | [`schemas/checks-v1.json`](https://raw.githubusercontent.com/OmerMohideen/react-crap/master/schemas/checks-v1.json) |
+| `--audit-deps` | [`schemas/audit-v1.json`](https://raw.githubusercontent.com/OmerMohideen/react-crap/master/schemas/audit-v1.json) |
+| `--arch` | [`schemas/arch-v1.json`](https://raw.githubusercontent.com/OmerMohideen/react-crap/master/schemas/arch-v1.json) |
+| `--audit-supply-chain` | [`schemas/supply-chain-v1.json`](https://raw.githubusercontent.com/OmerMohideen/react-crap/master/schemas/supply-chain-v1.json) |
+
+Every coverage-free check's `--format json` output carries a `$schema` URL pointing at the matching schema above.
 
 ```json
 // react-crap --format json
@@ -304,11 +324,40 @@ npx react-crap --dead-code
 
 # Everything above in one report.
 npx react-crap --checks
+
+# Known-vulnerable dependencies (wraps `npm audit`; needs package-lock.json).
+npx react-crap --audit-deps
+npx react-crap --audit-deps --fail-on-findings   # exit 1 if any vuln found
 ```
 
-Smell kinds: `effect-missing-deps`, `effect-missing-cleanup`, `effect-derived-state`, `unstable-prop`, `index-as-key`, `passthrough-wrapper`, `test-no-assert`, `as-any`, `non-null-assertion`, `type-any`, `ts-suppress`, `console`, `todo`, `placeholder`. In the human report kinds are colored by severity (red = likely bug, yellow = quality, dim = housekeeping).
+In the human report kinds are colored by severity (red = likely bug, yellow = quality, dim = housekeeping).
 
-All three are **report-only** — they print findings and exit 0, so they never block. Add `--format json` for machine output.
+By category:
+
+- **State & effects** — `effect-missing-deps`, `effect-missing-cleanup`, `effect-derived-state`.
+- **Performance** — `unstable-prop` (inline object/array/function props), `component-in-render` (nested component remounts every render), `index-as-key`.
+- **Security** (source patterns) — `dangerous-html` (`dangerouslySetInnerHTML` / XSS), `eval-usage` (`eval` / `new Function`), `href-javascript` (`href="javascript:"`), `target-blank` (`target="_blank"` without `rel="noopener"`).
+- **Accessibility** — `img-no-alt`, `button-no-type`, `anchor-no-href`, `positive-tabindex`, `redundant-role`, `no-autofocus`, `label-no-control`.
+- **Best practice** — `loose-equality` (`==`/`!=`), `var-keyword`, `passthrough-wrapper`, `test-no-assert`.
+- **Type escapes / housekeeping** — `as-any`, `non-null-assertion`, `type-any`, `ts-suppress`, `console`, `todo`, `placeholder`.
+
+`non-null-assertion` and `type-any` are noisy in normal TS and off by default — opt in with `--smells all`, by name, or per-rule config (below).
+
+### Customizing which rules run
+
+Set a `rules` map in `.react-crap.json` to customize kinds. Each maps to `false` (disable), `true` (force-enable, even a noisy default-off kind), or `"error"`/`"warn"`/`"note"` (force-enable and override its severity). Applies to `--smells` and `--checks`. Unknown kind names are rejected.
+
+```json
+{
+  "rules": {
+    "loose-equality": "error",
+    "var-keyword": false,
+    "type-any": "warn"
+  }
+}
+```
+
+All three are **report-only by default** — they print findings and exit 0, so they never block. Add `--fail-on-findings` to exit 1 when anything is found (CI gate), or `--format json` for machine output.
 
 ### Pre-commit hook (husky + lint-staged)
 
@@ -333,7 +382,7 @@ npx react-crap --checks --changed --no-color || true
 }
 ```
 
-Drop the `|| true` (or lint-staged's non-zero tolerance) if you ever add a `--fail-on-*` gate and want the commit blocked.
+Add `--fail-on-findings` (and drop the `|| true`) if you want the commit blocked when a check fires.
 
 ### In CI (any platform)
 
@@ -369,7 +418,7 @@ react-crap:
 Notes:
 - `--format json`/`github` are supported by `--checks`, `--smells`, `--duplicates`, and `--dead-code`.
 - **Do not** add `--changed` in CI — it reads the working tree (uncommitted edits), which is empty on a fresh checkout. CI scans the whole `--path`.
-- Report-only, so the job stays green. Add a `--fail-on-*` gate (not yet implemented) to block merges.
+- Report-only by default, so the job stays green. Add `--fail-on-findings` to fail the job (block merges) when any check fires.
 
 ## Integrating with CI
 

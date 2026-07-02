@@ -2,7 +2,12 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { ComplexityEntry, SmellKind } from "../src/complexity";
 import { analyzeComplexity } from "../src/complexity";
-import { collectSmells, countByKind } from "../src/smells";
+import {
+	collectSmells,
+	countByKind,
+	effectiveKinds,
+	resolveSeverity,
+} from "../src/smells";
 
 const fixture = resolve("test/fixtures/smells/slop.tsx");
 
@@ -65,6 +70,58 @@ describe("passthrough + test-no-assert", () => {
 		);
 	});
 
+	it("flags perf/best-practice/security kinds, but not a top-level component", async () => {
+		const f = resolve("test/fixtures/smells/perf-sec.tsx");
+		const result = await analyzeComplexity([f]);
+		const all = new Set(result.flatMap((r) => r.smells.map((s) => s.kind)));
+		expect(all).toContain("component-in-render");
+		expect(all).toContain("var-keyword");
+		expect(all).toContain("loose-equality");
+		expect(all).toContain("eval-usage");
+		expect(all).toContain("dangerous-html");
+
+		// The nested Child is flagged on its parent; the standalone Sibling isn't.
+		const flaggedNames = result
+			.filter((r) => r.smells.some((s) => s.kind === "component-in-render"))
+			.map((r) => r.function);
+		expect(flaggedNames).toContain("Parent");
+		expect(flaggedNames).not.toContain("Sibling");
+	});
+
+	it("flags accessibility and element-level security issues", async () => {
+		const f = resolve("test/fixtures/smells/perf-sec.tsx");
+		const result = await analyzeComplexity([f]);
+		const all = new Set(result.flatMap((r) => r.smells.map((s) => s.kind)));
+		expect(all).toContain("img-no-alt");
+		expect(all).toContain("button-no-type");
+		expect(all).toContain("target-blank");
+		expect(all).toContain("href-javascript");
+		expect(all).toContain("positive-tabindex");
+		expect(all).toContain("redundant-role");
+		expect(all).toContain("no-autofocus");
+		expect(all).toContain("label-no-control");
+	});
+
+	it("does not raise known false positives", async () => {
+		const f = resolve("test/fixtures/smells/no-false-positives.tsx");
+		const result = await analyzeComplexity([f]);
+		const kindsOf = (fn: string) =>
+			new Set(
+				result
+					.filter((r) => r.function === fn)
+					.flatMap((r) => r.smells.map((s) => s.kind)),
+			);
+		// Wrapper that adds href + children is not a passthrough.
+		expect(kindsOf("ValueWrapper")).not.toContain("passthrough-wrapper");
+		// Effect returning subscribe() has cleanup.
+		const subKinds = new Set(
+			result.flatMap((r) => r.smells.map((s) => s.kind)),
+		);
+		expect(subKinds).not.toContain("effect-missing-cleanup");
+		// localStorage.setItem is not a state setter.
+		expect(kindsOf("Persist")).not.toContain("effect-derived-state");
+	});
+
 	it("flags an it() with no expect, but not one with expect", async () => {
 		const f = resolve("test/fixtures/smells/faketests.test.tsx");
 		const result = await analyzeComplexity([f]);
@@ -80,5 +137,55 @@ describe("passthrough + test-no-assert", () => {
 			r.smells.some((s) => s.kind === "test-no-assert"),
 		);
 		expect(any).toBe(false);
+	});
+});
+
+describe("effectiveKinds (rule customization)", () => {
+	it("defaults to all kinds except the noisy ones", () => {
+		const k = effectiveKinds();
+		expect(k).toContain("loose-equality");
+		expect(k).not.toContain("type-any"); // noisy, off by default
+		expect(k).not.toContain("non-null-assertion");
+	});
+
+	it("config can disable a default kind", () => {
+		const k = effectiveKinds(undefined, { "loose-equality": false });
+		expect(k).not.toContain("loose-equality");
+		expect(k).toContain("var-keyword");
+	});
+
+	it("config can force-on a noisy default-off kind", () => {
+		const k = effectiveKinds(undefined, { "type-any": true });
+		expect(k).toContain("type-any");
+	});
+
+	it("disabling every kind yields an empty list (not 'all')", () => {
+		const rules = Object.fromEntries(
+			effectiveKinds().map((kind) => [kind, false]),
+		);
+		expect(effectiveKinds(undefined, rules)).toEqual([]);
+	});
+
+	it("a severity-string value force-enables the kind", () => {
+		expect(effectiveKinds(undefined, { "type-any": "warn" })).toContain(
+			"type-any",
+		);
+	});
+});
+
+describe("resolveSeverity", () => {
+	it("uses the static bucket by default", () => {
+		expect(resolveSeverity("dangerous-html")).toBe("high"); // BUG kind
+		expect(resolveSeverity("console")).toBe("note"); // housekeeping
+		expect(resolveSeverity("loose-equality")).toBe("warn"); // default
+	});
+
+	it("lets config override the severity", () => {
+		expect(
+			resolveSeverity("loose-equality", { "loose-equality": "error" }),
+		).toBe("high");
+		expect(
+			resolveSeverity("dangerous-html", { "dangerous-html": "note" }),
+		).toBe("note");
 	});
 });

@@ -118,6 +118,106 @@ describe("integration", () => {
 		}
 	});
 
+	const checksBase = {
+		threshold: 30,
+		missing: "pessimistic" as const,
+		exclude: [],
+		allow: [],
+		summary: false,
+		failAbove: false,
+		failRegression: false,
+		epsilon: 0.01,
+	};
+
+	async function captureRun(opts: any): Promise<string> {
+		let out = "";
+		const spy = vi
+			.spyOn(console, "log")
+			.mockImplementation((...args: any[]) => {
+				out += args.join(" ");
+			});
+		try {
+			await run(opts);
+		} finally {
+			spy.mockRestore();
+		}
+		return out;
+	}
+
+	it("--smells json output carries a $schema URL", async () => {
+		const out = await captureRun({
+			...checksBase,
+			path: resolve("test/fixtures/smells"),
+			format: "json",
+			smells: true,
+		});
+		const parsed = JSON.parse(out);
+		expect(parsed.$schema).toContain("smells-v1.json");
+		expect(Array.isArray(parsed.smells)).toBe(true);
+	});
+
+	it("--checks json output carries a $schema URL and all three sections", async () => {
+		const out = await captureRun({
+			...checksBase,
+			path: resolve("test/fixtures/smells"),
+			format: "json",
+			checks: true,
+		});
+		const parsed = JSON.parse(out);
+		expect(parsed.$schema).toContain("checks-v1.json");
+		expect(parsed).toHaveProperty("duplicates");
+		expect(parsed).toHaveProperty("smells");
+		expect(parsed).toHaveProperty("deadImports");
+	});
+
+	it("--fail-on-findings exits 1 when smells are present", async () => {
+		const exitSpy = vi
+			.spyOn(process, "exit")
+			.mockImplementation((() => undefined) as any);
+		try {
+			await captureRun({
+				...checksBase,
+				path: resolve("test/fixtures/smells"),
+				format: "json",
+				smells: true,
+				failOnFindings: true,
+			});
+			expect(exitSpy).toHaveBeenCalledWith(1);
+		} finally {
+			exitSpy.mockRestore();
+		}
+	});
+
+	it("--score prints a numeric health score in JSON", async () => {
+		const out = await captureRun({
+			...checksBase,
+			path: resolve("test/fixtures/smells"),
+			format: "json",
+			score: true,
+		});
+		const parsed = JSON.parse(out);
+		expect(typeof parsed.score).toBe("number");
+		expect(parsed.score).toBeGreaterThanOrEqual(0);
+		expect(parsed.score).toBeLessThanOrEqual(100);
+	});
+
+	it("--min-score exits 1 when the score is below the threshold", async () => {
+		const exitSpy = vi
+			.spyOn(process, "exit")
+			.mockImplementation((() => undefined) as any);
+		try {
+			await captureRun({
+				...checksBase,
+				path: resolve("test/fixtures/smells"),
+				format: "json",
+				minScore: 100, // fixtures have smells, so score < 100
+			});
+			expect(exitSpy).toHaveBeenCalledWith(1);
+		} finally {
+			exitSpy.mockRestore();
+		}
+	});
+
 	it("includes React-aware fields in JSON and human output", async () => {
 		const fixturePath = resolve("test/fixtures/sample");
 		const lcovPath = resolve(fixturePath, "coverage/lcov.info");

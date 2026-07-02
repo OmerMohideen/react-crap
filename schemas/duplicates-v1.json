@@ -1,0 +1,35 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "https://raw.githubusercontent.com/OmerMohideen/react-crap/master/schemas/duplicates-v1.json",
+	"type": "object",
+	"required": ["version", "duplicates"],
+	"properties": {
+		"$schema": { "type": "string" },
+		"version": { "type": "string" },
+		"duplicates": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"required": ["hash", "lines", "cyclomatic", "members"],
+				"properties": {
+					"hash": { "type": "string" },
+					"lines": { "type": "integer" },
+					"cyclomatic": { "type": "number" },
+					"members": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"required": ["file", "function", "line", "endLine"],
+							"properties": {
+								"file": { "type": "string" },
+								"function": { "type": "string" },
+								"line": { "type": "integer" },
+								"endLine": { "type": "integer" }
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}

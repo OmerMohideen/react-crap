@@ -1,0 +1,274 @@
+import { execSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import Table from "cli-table3";
+import pc from "picocolors";
+import { banner, type SeverityCounts, scoreFooter } from "./report/health.js";
+import { schemaUrl } from "./report/schema.js";
+
+export interface Vuln {
+	name: string;
+	severity: string; // critical | high | moderate | low | info
+	title: string;
+	url?: string;
+	range?: string;
+	fixAvailable: boolean;
+}
+
+// Worst first.
+const SEVERITY_ORDER = ["critical", "high", "moderate", "low", "info"];
+
+// Parse the `npm audit --json` v2 schema (npm 7+). Kept pure and separate from
+// the shell-out so it's testable without running npm.
+export function parseAuditJson(json: string): Vuln[] {
+	let data: any;
+	try {
+		data = JSON.parse(json);
+	} catch {
+		return [];
+	}
+	const vulns = data?.vulnerabilities;
+	if (!vulns || typeof vulns !== "object") return [];
+
+	const out: Vuln[] = [];
+	for (const key of Object.keys(vulns)) {
+		const v = vulns[key];
+		if (!v || typeof v !== "object") continue;
+		const via = Array.isArray(v.via) ? v.via : [];
+		// `via` mixes advisory objects and bare package-name strings (transitive).
+		const advisory = via.find((x: any) => x && typeof x === "object");
+		const title =
+			advisory?.title ??
+			(typeof via[0] === "string"
+				? `vulnerable via ${via[0]}`
+				: "vulnerable dependency");
+		out.push({
+			name: v.name ?? key,
+			severity: String(v.severity ?? "unknown"),
+			title,
+			url: advisory?.url,
+			range: v.range,
+			// fixAvailable is `true`, `false`, or an object describing the bump.
+			fixAvailable:
+				v.fixAvailable === true ||
+				(!!v.fixAvailable && typeof v.fixAvailable === "object"),
+		});
+	}
+	out.sort(
+		(a, b) =>
+			SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity),
+	);
+	return out;
+}
+
+// Nearest ancestor of `start` that has a package.json — npm audit must run
+// where the lockfile lives, not in the source subdir (--path defaults to src).
+export function findPackageRoot(start: string): string {
+	let dir = resolve(start);
+	while (true) {
+		if (existsSync(resolve(dir, "package.json"))) return dir;
+		const parent = dirname(dir);
+		if (parent === dir) return resolve(start);
+		dir = parent;
+	}
+}
+
+// An npm-v6-style advisory object — used by both `pnpm audit --json`
+// (keyed `advisories` map) and `yarn audit --json` (NDJSON auditAdvisory).
+function advisoryToVuln(a: any): Vuln {
+	return {
+		name: a?.module_name ?? "unknown",
+		severity: String(a?.severity ?? "unknown"),
+		title: a?.title ?? "vulnerable dependency",
+		url: a?.url,
+		range: a?.vulnerable_versions,
+		fixAvailable: !!a?.patched_versions && a.patched_versions !== "<0.0.0",
+	};
+}
+
+const bySeverity = (a: Vuln, b: Vuln) =>
+	SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity);
+
+// pnpm audit --json: `{ advisories: { "<id>": <advisory> }, metadata }`.
+export function parsePnpmAudit(json: string): Vuln[] {
+	let data: any;
+	try {
+		data = JSON.parse(json);
+	} catch {
+		return [];
+	}
+	const advisories = data?.advisories;
+	if (!advisories || typeof advisories !== "object") return [];
+	return Object.values(advisories).map(advisoryToVuln).sort(bySeverity);
+}
+
+// yarn (classic) audit --json: newline-delimited JSON, one object per line;
+// vulnerabilities are `{ type: "auditAdvisory", data: { advisory } }`. The same
+// advisory repeats per dependency path, so dedupe by name+title.
+export function parseYarnAudit(ndjson: string): Vuln[] {
+	const seen = new Set<string>();
+	const out: Vuln[] = [];
+	for (const line of ndjson.split(/\r?\n/)) {
+		const t = line.trim();
+		if (!t) continue;
+		let obj: any;
+		try {
+			obj = JSON.parse(t);
+		} catch {
+			continue;
+		}
+		if (obj?.type !== "auditAdvisory" || !obj.data?.advisory) continue;
+		const v = advisoryToVuln(obj.data.advisory);
+		const key = `${v.name}${v.title}`;
+		if (seen.has(key)) continue;
+		seen.add(key);
+		out.push(v);
+	}
+	return out.sort(bySeverity);
+}
+
+interface Manager {
+	name: string;
+	lockfile: string;
+	cmd: string;
+	parse: (out: string) => Vuln[];
+}
+
+// First matching lockfile wins. ponytail: yarn entry assumes classic (v1)
+// NDJSON; Berry's `yarn npm audit` differs — add a Berry branch if needed.
+const MANAGERS: Manager[] = [
+	{
+		name: "npm",
+		lockfile: "package-lock.json",
+		cmd: "npm audit --json",
+		parse: parseAuditJson,
+	},
+	{
+		name: "pnpm",
+		lockfile: "pnpm-lock.yaml",
+		cmd: "pnpm audit --json",
+		parse: parsePnpmAudit,
+	},
+	{
+		name: "yarn",
+		lockfile: "yarn.lock",
+		cmd: "yarn audit --json",
+		parse: parseYarnAudit,
+	},
+];
+
+export function runAudit(projectPath: string): Vuln[] {
+	const root = findPackageRoot(projectPath);
+	const mgr = MANAGERS.find((m) => existsSync(resolve(root, m.lockfile)));
+	if (!mgr) {
+		throw new Error(
+			`No lockfile found at ${root}. --audit-deps needs one of: ` +
+				`${MANAGERS.map((m) => m.lockfile).join(", ")} (run your package manager's install first).`,
+		);
+	}
+
+	// audit exits non-zero when vulnerabilities exist; the JSON still lands on
+	// stdout, so read it from the thrown error too.
+	let out = "";
+	try {
+		out = execSync(mgr.cmd, {
+			cwd: root,
+			encoding: "utf-8",
+			stdio: ["ignore", "pipe", "ignore"],
+		});
+	} catch (e: any) {
+		out = e?.stdout?.toString?.() ?? "";
+	}
+	if (!out.trim()) {
+		throw new Error(
+			`\`${mgr.cmd}\` produced no output. Ensure ${mgr.name} is installed and the lockfile is valid.`,
+		);
+	}
+	return mgr.parse(out);
+}
+
+// Advisory URLs are long; the GHSA id (last path segment) is the useful part.
+const shortAdvisory = (url: string): string =>
+	url.replace(/\/+$/, "").split("/").pop() || url;
+
+const paintSeverity = (c: any, sev: string): string => {
+	if (sev === "critical" || sev === "high") return c.red(sev);
+	if (sev === "moderate") return c.yellow(sev);
+	return c.dim(sev);
+};
+
+export function formatAuditHuman(
+	vulns: Vuln[],
+	opts: { noColor?: boolean } = {},
+): string {
+	const id = (s: string) => s;
+	const c = opts.noColor ? { yellow: id, gray: id, red: id, dim: id } : pc;
+
+	if (vulns.length === 0)
+		return [
+			banner("audit-deps", opts.noColor),
+			c.gray("No known-vulnerable dependencies."),
+			scoreFooter({ high: 0, warn: 0, note: 0 }, opts.noColor),
+		].join("\n");
+
+	// Cap column widths so long titles/URLs wrap instead of blowing past the
+	// terminal. Advisory URLs are shortened to their GHSA id to stay compact.
+	const table = new Table({
+		head: ["Severity", "Package", "Fix", "Advisory"],
+		style: { head: [], border: [] },
+		colWidths: [10, 30, 5, 50],
+		wordWrap: true,
+	});
+	for (const v of vulns) {
+		const ref = v.url ? `\n${c.gray(shortAdvisory(v.url))}` : "";
+		table.push([
+			paintSeverity(c, v.severity),
+			v.range ? `${v.name}@${v.range}` : v.name,
+			v.fixAvailable ? "yes" : c.dim("no"),
+			`${v.title}${ref}`,
+		]);
+	}
+
+	const counts: Record<string, number> = {};
+	for (const v of vulns) counts[v.severity] = (counts[v.severity] ?? 0) + 1;
+	const summary = SEVERITY_ORDER.filter((s) => counts[s])
+		.map((s) => `${paintSeverity(c, s)}: ${counts[s]}`)
+		.join("  ");
+
+	return [
+		banner("audit-deps", opts.noColor),
+		c.yellow(`Found ${vulns.length} vulnerable dependency(ies):`),
+		table.toString() as string,
+		c.gray(summary),
+		scoreFooter(auditSeverityCounts(vulns), opts.noColor),
+	].join("\n");
+}
+
+// critical/high → high, moderate → warn, low/info → note.
+function auditSeverityCounts(vulns: Vuln[]): SeverityCounts {
+	const c: SeverityCounts = { high: 0, warn: 0, note: 0 };
+	for (const v of vulns) {
+		if (v.severity === "critical" || v.severity === "high") c.high++;
+		else if (v.severity === "moderate") c.warn++;
+		else c.note++;
+	}
+	return c;
+}
+
+// No file/line to attach, so these annotations surface in the job log only.
+export function formatAuditGithub(vulns: Vuln[]): string {
+	return vulns
+		.map(
+			(v) =>
+				`::warning title=react-crap/vuln-dep::${v.name} (${v.severity}): ${v.title}`,
+		)
+		.join("\n");
+}
+
+export function formatAuditJson(vulns: Vuln[], version: string): string {
+	return JSON.stringify(
+		{ $schema: schemaUrl("audit-v1.json"), version, vulnerabilities: vulns },
+		null,
+		2,
+	);
+}

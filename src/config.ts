@@ -1,10 +1,13 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { ALL_SMELL_KINDS, type SmellKind } from "./complexity.js";
 
 const ALLOWED_KEYS = new Set([
 	"threshold",
 	"componentThreshold",
 	"failAbove",
+	"failOnFindings",
+	"minScore",
 	"missing",
 	"exclude",
 	"allow",
@@ -17,12 +20,15 @@ const ALLOWED_KEYS = new Set([
 	"verbose",
 	"watch",
 	"sort",
+	"rules",
 ]);
 
 export interface Config {
 	threshold?: number;
 	componentThreshold?: number;
 	failAbove?: boolean;
+	failOnFindings?: boolean;
+	minScore?: number;
 	missing?: "pessimistic" | "optimistic" | "skip";
 	exclude?: string[];
 	allow?: string[];
@@ -35,6 +41,10 @@ export interface Config {
 	verbose?: boolean;
 	watch?: boolean;
 	sort?: string;
+	// Per-smell-kind overrides for --smells/--checks: true = force-on (even
+	// noisy/deselected kinds), false = disable, or "error"/"warn"/"note" to
+	// force-on with that display severity.
+	rules?: Partial<Record<SmellKind, boolean | "error" | "warn" | "note">>;
 }
 
 export function loadConfig(startDir: string): Config {
@@ -73,6 +83,32 @@ function validateConfig(config: Config, path: string): void {
 			throw new ConfigValidationError(
 				`Unknown key "${key}" in ${path}.${suggestion ? ` Did you mean "${suggestion}"?` : ""} Allowed keys: ${Array.from(ALLOWED_KEYS).sort().join(", ")}`,
 			);
+		}
+	}
+
+	if (config.rules !== undefined) {
+		if (typeof config.rules !== "object" || config.rules === null) {
+			throw new ConfigValidationError(
+				`"rules" in ${path} must be an object mapping smell kinds to true/false.`,
+			);
+		}
+		const known = new Set<string>(ALL_SMELL_KINDS);
+		for (const [kind, value] of Object.entries(config.rules)) {
+			if (!known.has(kind)) {
+				throw new ConfigValidationError(
+					`Unknown smell kind "${kind}" in "rules" (${path}). Valid kinds: ${ALL_SMELL_KINDS.join(", ")}`,
+				);
+			}
+			const ok =
+				typeof value === "boolean" ||
+				value === "error" ||
+				value === "warn" ||
+				value === "note";
+			if (!ok) {
+				throw new ConfigValidationError(
+					`"rules.${kind}" in ${path} must be true, false, or "error"/"warn"/"note", got ${JSON.stringify(value)}.`,
+				);
+			}
 		}
 	}
 }

@@ -1,0 +1,25 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "https://raw.githubusercontent.com/OmerMohideen/react-crap/master/schemas/arch-v1.json",
+	"type": "object",
+	"required": ["version", "cycles", "barrels"],
+	"properties": {
+		"$schema": { "type": "string" },
+		"version": { "type": "string" },
+		"cycles": {
+			"type": "array",
+			"items": { "type": "array", "items": { "type": "string" } }
+		},
+		"barrels": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"required": ["file", "reexports"],
+				"properties": {
+					"file": { "type": "string" },
+					"reexports": { "type": "integer" }
+				}
+			}
+		}
+	}
+}

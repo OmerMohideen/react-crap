@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { ComplexityEntry } from "./complexity.js";
+import { getLocalVersion } from "./version-check.js";
 
 export interface CacheEntry {
 	hash: string;
@@ -14,7 +15,10 @@ export interface Cache {
 }
 
 const CACHE_FILE = ".react-crap-cache.json";
-const CACHE_VERSION = "7";
+// Tie the cache to the package version so every release invalidates it. The
+// cache stores computed complexity + smell results; bumping the package on any
+// release means analyzer changes can never silently serve stale findings.
+const CACHE_VERSION = getLocalVersion();
 
 export function loadCache(projectPath: string): Cache {
 	const path = resolve(projectPath, CACHE_FILE);

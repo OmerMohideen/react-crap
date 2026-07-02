@@ -1,0 +1,25 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "https://raw.githubusercontent.com/OmerMohideen/react-crap/master/schemas/audit-v1.json",
+	"type": "object",
+	"required": ["version", "vulnerabilities"],
+	"properties": {
+		"$schema": { "type": "string" },
+		"version": { "type": "string" },
+		"vulnerabilities": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"required": ["name", "severity", "title", "fixAvailable"],
+				"properties": {
+					"name": { "type": "string" },
+					"severity": { "type": "string" },
+					"title": { "type": "string" },
+					"url": { "type": "string" },
+					"range": { "type": "string" },
+					"fixAvailable": { "type": "boolean" }
+				}
+			}
+		}
+	}
+}
