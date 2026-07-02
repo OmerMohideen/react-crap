@@ -1,3 +1,27 @@
+# [1.7.0](https://github.com/OmerMohideen/react-crap/compare/v1.6.0...v1.7.0) (2026-07-02)
+
+
+### Bug Fixes
+
+* **audit:** cap --audit-deps table width, shorten advisory to GHSA id ([8b23dea](https://github.com/OmerMohideen/react-crap/commit/8b23dea7c311df56c3ac69aa995e4a9d9f0549c8))
+* **cache:** tie cache version to package version ([ea61de1](https://github.com/OmerMohideen/react-crap/commit/ea61de129b03f5407f52e28a9208143a786712ff))
+* **duplicates:** skip anonymous inline callbacks (handler/callback noise) ([babb425](https://github.com/OmerMohideen/react-crap/commit/babb425463b5c8e559d557c82e884968bc841a54))
+* **smells:** three false positives found testing DIM ([c2361ec](https://github.com/OmerMohideen/react-crap/commit/c2361ec42a02dec2a264206e311eeb37eed1bae8))
+
+
+### Features
+
+* --arch — circular imports and barrel-bloat detection ([2b21722](https://github.com/OmerMohideen/react-crap/commit/2b21722de526761dbe296afaa5327642b77c3004))
+* --audit-supply-chain — install-script + typosquat heuristics ([35288ca](https://github.com/OmerMohideen/react-crap/commit/35288cab5094eeb5c4d0e0efba52858fe9078024))
+* --score / --min-score gate; confirm --checks --watch ([fe69c56](https://github.com/OmerMohideen/react-crap/commit/fe69c56a9cbcbb6884baebbca27e0b7cba617c53))
+* 3 more a11y rules + per-rule severity override ([cecf0bb](https://github.com/OmerMohideen/react-crap/commit/cecf0bb8474cdd8a3cf65446f5561ce741f05b7d))
+* accessibility/security smell rules + per-rule config ([5e6b6fd](https://github.com/OmerMohideen/react-crap/commit/5e6b6fdb5e2af92754b3bbbf51ba3cb440397e0e))
+* line-level diff scoping, --fail-on-findings gate, zero-config audit ([353ca87](https://github.com/OmerMohideen/react-crap/commit/353ca875b3a2597441d1ad971df6e2a1c084fb7d))
+* perf/security/best-practice smells + npm dependency audit ([50da6b4](https://github.com/OmerMohideen/react-crap/commit/50da6b4bfd72bf45bfb83d6d606281a63ae62df8))
+* pnpm and yarn support for --audit-deps ([edec071](https://github.com/OmerMohideen/react-crap/commit/edec071e7c1aee7b0c73fbf62a83aff27110223f))
+* polished report headers and health-score footer ([99f471f](https://github.com/OmerMohideen/react-crap/commit/99f471fe3675171392d66876ac8cd049ea018cb2))
+* versioned JSON schemas + e2e tests for coverage-free checks ([f22a1c2](https://github.com/OmerMohideen/react-crap/commit/f22a1c26232c38f2e762044d549c96ab3b01360c))
+
 # [1.6.0](https://github.com/OmerMohideen/react-crap/compare/v1.5.0...v1.6.0) (2026-06-24)
 
 
