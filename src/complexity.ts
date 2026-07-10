@@ -668,6 +668,10 @@ async function analyzeFile(
 			"ObjectLiteralExpression",
 			"ArrayLiteralExpression",
 		]);
+		// Styling-system props whose object/array form is the library's intended
+		// API (MUI `sx`, emotion/twin `css`, clsx/tailwind-variants class props).
+		// Flagging them is pure noise — the library owns their identity semantics.
+		const STYLE_SYSTEM_PROP = new Set(["sx", "css", "className", "classNames"]);
 		function checkJsxAttr(attr: any) {
 			const attrName = tsMod.isIdentifier(attr.name) ? attr.name.text : "";
 
@@ -696,6 +700,7 @@ async function analyzeFile(
 			}
 
 			const kind = tsMod.SyntaxKind[expr.kind];
+			if (UNSTABLE_PROP.has(kind) && STYLE_SYSTEM_PROP.has(attrName)) return;
 			if (
 				tsMod.isArrowFunction(expr) ||
 				tsMod.isFunctionExpression(expr) ||

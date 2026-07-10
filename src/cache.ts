@@ -15,10 +15,17 @@ export interface Cache {
 }
 
 const CACHE_FILE = ".react-crap-cache.json";
-// Tie the cache to the package version so every release invalidates it. The
-// cache stores computed complexity + smell results; bumping the package on any
-// release means analyzer changes can never silently serve stale findings.
-const CACHE_VERSION = getLocalVersion();
+// Tie the cache to the package version AND a hash of the analyzer module.
+// Version alone isn't enough: running from a branch/dev checkout changes the
+// analyzer without a version bump and would silently serve stale findings.
+const analyzerHash = (() => {
+	for (const name of ["complexity.js", "complexity.ts"]) {
+		const p = resolve(__dirname, name);
+		if (existsSync(p)) return hashFile(readFileSync(p, "utf-8"));
+	}
+	return "";
+})();
+const CACHE_VERSION = `${getLocalVersion()}-${analyzerHash}`;
 
 export function loadCache(projectPath: string): Cache {
 	const path = resolve(projectPath, CACHE_FILE);
