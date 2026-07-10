@@ -1,3 +1,11 @@
+## [1.7.1](https://github.com/OmerMohideen/react-crap/compare/v1.7.0...v1.7.1) (2026-07-10)
+
+
+### Bug Fixes
+
+* **cache:** include analyzer hash in cache version ([afeacb9](https://github.com/OmerMohideen/react-crap/commit/afeacb9ad8f6454cf72f672b3181f3e57c8107d2))
+* **smells:** exempt style-system props from unstable-prop ([2235d90](https://github.com/OmerMohideen/react-crap/commit/2235d907de9a69613031bc6be9696605800618e3))
+
 # [1.7.0](https://github.com/OmerMohideen/react-crap/compare/v1.6.0...v1.7.0) (2026-07-02)
 
 
