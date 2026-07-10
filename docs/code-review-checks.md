@@ -38,7 +38,7 @@ Kinds are colored by severity in the human report: **red** = likely bug, **yello
 - `effect-derived-state` — effect only calls `setState` (derive during render instead)
 
 ### Performance
-- `unstable-prop` — inline object/array/function prop (new reference every render)
+- `unstable-prop` — inline object/array/function prop (new reference every render). Style-system props (`sx`, `css`, `className`, `classNames`) are exempt — object/array literals there are the styling library's intended API (MUI, emotion, clsx/tailwind-variants).
 - `component-in-render` — a component defined inside another component (remounts every render)
 - `index-as-key` — list `key` is the array index (unstable across reorders)
 

@@ -39,4 +39,19 @@ export function Sloppy({ items }: { items: string[] }) {
 	);
 }
 
+// MUI/tailwind style-system props — object/array literals here are the
+// library's intended API and must NOT be flagged as unstable-prop.
+export function Styled({ active }: { active: boolean }) {
+	return (
+		<section
+			sx={{ p: 2, color: "primary.main" }}
+			css={{ display: "flex" }}
+			className={["flex", active && "font-bold"]}
+			classNames={{ base: "rounded", label: "text-sm" }}
+		>
+			styled
+		</section>
+	);
+}
+
 function doThing() {}

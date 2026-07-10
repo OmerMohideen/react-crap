@@ -43,6 +43,10 @@ describe("detectSmells", () => {
 		expect(all).toContain("index-as-key"); // key={i}
 	});
 
+	it("does not flag style-system props (sx/css/className/classNames)", async () => {
+		expect(await kindsFor("Styled")).not.toContain("unstable-prop");
+	});
+
 	it("collectSmells filters by kind", async () => {
 		const result = await analyzeComplexity([fixture]);
 		const onlyConsole = collectSmells(result, ["console"]);
